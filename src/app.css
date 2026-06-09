@@ -20,6 +20,23 @@
   color-scheme: dark;
 }
 
+/* Soft light theme (see docs/THEME_FORMAT.md). Applied via data-theme=light. */
+:root[data-theme='light'] {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-code: #f2f4f7;
+  --border: #dde1e7;
+  --text: #11161c;
+  --text-muted: #6b7480;
+  --accent: #c86a3a;
+  --accent-bright: #e5550f;
+  --success: #3b8f68;
+  --warning: #a8842d;
+  --danger: #c86a3a;
+
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }
