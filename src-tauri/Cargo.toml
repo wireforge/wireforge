@@ -20,6 +20,7 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
+nanoid = "0.4"
 
 # Heavier capability crates are added in the phases that implement them:
 #   reqwest (HttpEngine, v0.1), git2 + octocrab (VcsProvider, v0.5+),

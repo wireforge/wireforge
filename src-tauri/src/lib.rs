@@ -5,7 +5,9 @@
 //! later phases, so dead code is allowed during scaffolding.
 #![allow(dead_code)]
 
+pub mod canonical;
 pub mod error;
+pub mod id;
 pub mod model;
 
 mod commands;
