@@ -18,7 +18,9 @@ export type Body =
 
 export type Auth =
   | { type: 'none' }
-  | { type: 'bearer'; token: string };
+  | { type: 'bearer'; token: string }
+  | { type: 'basic'; username: string; password: string }
+  | { type: 'apiKey'; placement: 'header' | 'query'; key: string; value: string };
 
 export interface UnifiedRequest {
   method: HttpMethod;

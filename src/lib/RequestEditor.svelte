@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { UnifiedRequest } from './types';
+  import KeyValueEditor from './KeyValueEditor.svelte';
+  import AuthEditor from './AuthEditor.svelte';
 
   let {
     request = $bindable(),
@@ -9,13 +11,7 @@
 
   const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
-  function addHeader() {
-    request.headers = [...request.headers, { enabled: true, key: '', value: '' }];
-  }
-
-  function removeHeader(index: number) {
-    request.headers = request.headers.filter((_, i) => i !== index);
-  }
+  let tab = $state<'params' | 'headers' | 'body' | 'auth'>('params');
 
   function setBodyMode(mode: string) {
     if (mode === 'json') {
@@ -61,41 +57,44 @@
     </button>
   </div>
 
-  <section class="block">
-    <div class="block-head">
-      <span>Headers</span>
-      <button class="ghost" onclick={addHeader}>+ Add</button>
-    </div>
-    {#each request.headers as header, i (i)}
-      <div class="kv">
-        <input type="checkbox" bind:checked={header.enabled} aria-label="Enabled" />
-        <input class="mono" bind:value={header.key} placeholder="Header" spellcheck="false" />
-        <input class="mono" bind:value={header.value} placeholder="Value" spellcheck="false" />
-        <button class="ghost" onclick={() => removeHeader(i)} aria-label="Remove header">✕</button>
-      </div>
-    {/each}
-  </section>
+  <div class="tabs">
+    <button class:active={tab === 'params'} onclick={() => (tab = 'params')}>
+      Params{request.params.length ? ` (${request.params.length})` : ''}
+    </button>
+    <button class:active={tab === 'headers'} onclick={() => (tab = 'headers')}>
+      Headers{request.headers.length ? ` (${request.headers.length})` : ''}
+    </button>
+    <button class:active={tab === 'body'} onclick={() => (tab = 'body')}>Body</button>
+    <button class:active={tab === 'auth'} onclick={() => (tab = 'auth')}>Auth</button>
+  </div>
 
-  <section class="block">
-    <div class="block-head">
-      <span>Body</span>
-      <select value={request.body.mode} onchange={(e) => setBodyMode(e.currentTarget.value)} aria-label="Body mode">
-        <option value="none">None</option>
-        <option value="json">JSON</option>
-        <option value="raw">Raw</option>
-      </select>
-    </div>
-    {#if request.body.mode === 'json' || request.body.mode === 'raw'}
-      <textarea class="body mono" bind:value={request.body.text} spellcheck="false"></textarea>
+  <div class="tab-body">
+    {#if tab === 'params'}
+      <KeyValueEditor bind:items={request.params} />
+    {:else if tab === 'headers'}
+      <KeyValueEditor bind:items={request.headers} />
+    {:else if tab === 'body'}
+      <div class="body-mode">
+        <select value={request.body.mode} onchange={(e) => setBodyMode(e.currentTarget.value)} aria-label="Body mode">
+          <option value="none">None</option>
+          <option value="json">JSON</option>
+          <option value="raw">Raw</option>
+        </select>
+      </div>
+      {#if request.body.mode === 'json' || request.body.mode === 'raw'}
+        <textarea class="body mono" bind:value={request.body.text} spellcheck="false"></textarea>
+      {/if}
+    {:else if tab === 'auth'}
+      <AuthEditor bind:auth={request.auth} />
     {/if}
-  </section>
+  </div>
 </div>
 
 <style>
   .editor {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
     height: 100%;
   }
   .bar {
@@ -107,6 +106,7 @@
   }
   .url {
     flex: 1;
+    min-width: 0;
   }
   select,
   input,
@@ -117,9 +117,6 @@
     border-radius: 6px;
     padding: 6px 8px;
     font-size: 12px;
-  }
-  input[type='checkbox'] {
-    padding: 0;
   }
   .send {
     background: var(--accent);
@@ -134,30 +131,34 @@
     opacity: 0.6;
     cursor: default;
   }
-  .block-head {
+  .tabs {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 6px;
-    color: var(--text-muted);
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
   }
-  .kv {
-    display: grid;
-    grid-template-columns: auto 1fr 1fr auto;
-    gap: 6px;
-    margin-bottom: 4px;
-  }
-  .ghost {
+  .tabs button {
     background: transparent;
     color: var(--text-muted);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 2px 8px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 10px;
     cursor: pointer;
+    font-size: 12px;
+  }
+  .tabs button.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
+  .tab-body {
+    flex: 1;
+    min-height: 0;
+  }
+  .body-mode {
+    margin-bottom: 8px;
   }
   .body {
     width: 100%;
-    min-height: 160px;
+    min-height: 200px;
     resize: vertical;
   }
   .mono {
