@@ -1,0 +1,13 @@
+# Normalize line endings to LF across platforms. Matches the canonical
+# serializer's LF rule and keeps diffs stable on Windows and Unix alike.
+* text=auto eol=lf
+
+# Binary assets must not be normalized.
+*.png binary
+*.ico binary
+*.icns binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.woff binary
+*.woff2 binary

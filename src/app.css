@@ -1,0 +1,36 @@
+/* Dark theme tokens (see themes/dark.wireforge.theme.json). */
+:root {
+  --bg: #0f1318;
+  --surface: #181d24;
+  --surface-code: #0e1217;
+  --border: #2a313b;
+  --text: #e8ebef;
+  --text-muted: #9ba6b2;
+  --accent: #ff6a2c;
+
+  --font-ui:
+    Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:
+    'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 20px;
+}

@@ -1,0 +1,75 @@
+{
+  "format": "wireforge.theme",
+  "version": 1,
+  "id": "theme_builtin_dark",
+  "name": "Dark",
+  "base": "dark",
+  "author": "wireforge",
+  "readOnly": true,
+  "tokens": {
+    "bg": "#0F1318",
+    "surface": "#181D24",
+    "surfaceElevated": "#181D24",
+    "surfaceCode": "#0E1217",
+    "border": "#2A313B",
+    "borderStrong": "#3A4350",
+    "text": "#E8EBEF",
+    "textMuted": "#9BA6B2",
+    "textDisabled": "#5B6573",
+    "accent": "#FF6A2C",
+    "accentSoft": "#2A1B15",
+    "success": "#3DD68C",
+    "successSoft": "#14251D",
+    "warning": "#FFC24B",
+    "warningSoft": "#2B2415",
+    "danger": "#FF6A2C",
+    "dangerSoft": "#2A1B15",
+    "focus": "#FF6A2C",
+    "selection": "#2A1B15"
+  },
+  "methodBadges": {
+    "GET": {
+      "text": "#0F1318",
+      "background": "#3DD68C"
+    },
+    "POST": {
+      "text": "#0F1318",
+      "background": "#FF6A2C"
+    },
+    "PUT": {
+      "text": "#0F1318",
+      "background": "#FFC24B"
+    },
+    "PATCH": {
+      "text": "#0F1318",
+      "background": "#DCA73B"
+    },
+    "DELETE": {
+      "text": "#0F1318",
+      "background": "#FF8A5E"
+    },
+    "HEAD": {
+      "text": "#E8EBEF",
+      "background": "#2A313B"
+    },
+    "OPTIONS": {
+      "text": "#E8EBEF",
+      "background": "#2A313B"
+    }
+  },
+  "syntax": {
+    "jsonKey": "#8EC5FF",
+    "jsonString": "#D7BA7D",
+    "jsonNumber": "#3DD68C",
+    "jsonBoolean": "#B99CFF",
+    "jsonNull": "#9BA6B2"
+  },
+  "git": {
+    "modified": "#FF6A2C",
+    "new": "#3DD68C",
+    "renamed": "#FFC24B",
+    "conflict": "#FF6A2C",
+    "unpushed": "#9BA6B2"
+  }
+}
+

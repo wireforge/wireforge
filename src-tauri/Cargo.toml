@@ -1,0 +1,33 @@
+[package]
+name = "wireforge"
+version = "0.1.0"
+description = "A lightweight, Git-aware desktop API client"
+authors = ["wireforge contributors"]
+edition = "2021"
+license = "MIT"
+rust-version = "1.77"
+
+# The library is what Tauri's mobile/desktop entry points link against.
+[lib]
+name = "wireforge_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# Heavier capability crates are added in the phases that implement them:
+#   reqwest (HttpEngine, v0.1), git2 + octocrab (VcsProvider, v0.5+),
+#   keyring (SecretResolver, v0.4), rusqlite (history).
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
