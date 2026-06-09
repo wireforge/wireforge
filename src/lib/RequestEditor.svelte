@@ -27,15 +27,14 @@
     }
   }
 
-  function onKeydown(event: KeyboardEvent) {
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-      event.preventDefault();
-      onsend();
-    }
-  }
+  // The active editor's URL input focuses on the app-level "focus URL" command.
+  let urlEl = $state<HTMLInputElement>();
+  $effect(() => {
+    const handler = () => urlEl?.focus();
+    window.addEventListener('wf:focus-url', handler);
+    return () => window.removeEventListener('wf:focus-url', handler);
+  });
 </script>
-
-<svelte:window onkeydown={onKeydown} />
 
 <div class="editor">
   <div class="bar">
@@ -46,6 +45,7 @@
     </select>
     <input
       class="url mono"
+      bind:this={urlEl}
       bind:value={request.url}
       placeholder="https://api.example.com/v1/..."
       spellcheck="false"

@@ -2,34 +2,83 @@
   import { invoke } from '@tauri-apps/api/core';
   import RequestEditor from './lib/RequestEditor.svelte';
   import ResponseViewer from './lib/ResponseViewer.svelte';
+  import CommandPalette from './lib/CommandPalette.svelte';
   import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
   import type { UnifiedRequest, UnifiedResponse, WfError } from './lib/types';
 
-  // --- Request state (single request for now; tabs land in the next chunk) ---
-  let request = $state<UnifiedRequest>({
-    method: 'GET',
-    url: 'https://jsonplaceholder.typicode.com/todos/1',
-    params: [],
-    headers: [{ enabled: true, key: 'Accept', value: 'application/json' }],
-    auth: { type: 'none' },
-    body: { mode: 'none' },
-  });
-  let response = $state<UnifiedResponse | null>(null);
-  let error = $state<WfError | null>(null);
-  let sending = $state(false);
+  // --- Tabs (one open request each) ---
+  interface Tab {
+    id: number;
+    request: UnifiedRequest;
+    pristine: string;
+    response: UnifiedResponse | null;
+    error: WfError | null;
+    sending: boolean;
+  }
+
+  let nextId = 1;
+
+  function newRequest(): UnifiedRequest {
+    return {
+      method: 'GET',
+      url: 'https://jsonplaceholder.typicode.com/todos/1',
+      params: [],
+      headers: [{ enabled: true, key: 'Accept', value: 'application/json' }],
+      auth: { type: 'none' },
+      body: { mode: 'none' },
+    };
+  }
+
+  function makeTab(): Tab {
+    const request = newRequest();
+    return { id: nextId++, request, pristine: JSON.stringify(request), response: null, error: null, sending: false };
+  }
+
+  let tabs = $state<Tab[]>([makeTab()]);
+  let activeIndex = $state(0);
+  const active = $derived(tabs[activeIndex]);
+
+  function addTab() {
+    tabs = [...tabs, makeTab()];
+    activeIndex = tabs.length - 1;
+  }
+
+  function closeTab(i: number) {
+    tabs = tabs.filter((_, idx) => idx !== i);
+    if (tabs.length === 0) tabs = [makeTab()];
+    if (activeIndex >= tabs.length) activeIndex = tabs.length - 1;
+  }
+
+  function tabLabel(t: Tab): string {
+    try {
+      const u = new URL(t.request.url);
+      return u.pathname.split('/').filter(Boolean).pop() || u.host;
+    } catch {
+      return 'New request';
+    }
+  }
+
+  function isDirty(t: Tab): boolean {
+    return JSON.stringify(t.request) !== t.pristine;
+  }
 
   async function send() {
-    if (sending) return;
-    sending = true;
-    error = null;
+    const t = tabs[activeIndex];
+    if (!t || t.sending) return;
+    t.sending = true;
+    t.error = null;
     try {
-      response = await invoke<UnifiedResponse>('send_request', { request });
+      t.response = await invoke<UnifiedResponse>('send_request', { request: t.request });
     } catch (e) {
-      error = e as WfError;
-      response = null;
+      t.error = e as WfError;
+      t.response = null;
     } finally {
-      sending = false;
+      t.sending = false;
     }
+  }
+
+  function focusUrl() {
+    window.dispatchEvent(new Event('wf:focus-url'));
   }
 
   // --- Theme ---
@@ -45,7 +94,7 @@
     }
   });
 
-  // --- Layout (persisted per browser; "per workspace" arrives with workspaces) ---
+  // --- Layout ---
   type Orientation = 'row' | 'column';
   const LKEY = 'wf.layout';
 
@@ -112,10 +161,48 @@
     window.addEventListener('pointerup', up);
   }
 
+  // --- Command palette + central shortcut dispatch ---
+  let paletteOpen = $state(false);
+
+  const commands = $derived([
+    { id: 'send', title: 'Send request', combo: 'Ctrl/Cmd+Enter', run: send },
+    { id: 'newtab', title: 'New tab', combo: 'Ctrl/Cmd+T', run: addTab },
+    { id: 'closetab', title: 'Close tab', combo: 'Ctrl/Cmd+W', run: () => closeTab(activeIndex) },
+    { id: 'layout', title: 'Toggle request/response layout', combo: 'Ctrl/Cmd+\\', run: () => (orientation = orientation === 'row' ? 'column' : 'row') },
+    { id: 'sidebar', title: 'Toggle sidebar', combo: 'Ctrl/Cmd+B', run: () => (sidebarCollapsed = !sidebarCollapsed) },
+    { id: 'focusurl', title: 'Focus URL', combo: 'Ctrl/Cmd+L', run: focusUrl },
+    { id: 'theme-dark', title: 'Theme: Dark', run: () => (theme = 'dark') },
+    { id: 'theme-light', title: 'Theme: Light', run: () => (theme = 'light') },
+    { id: 'theme-system', title: 'Theme: System', run: () => (theme = 'system') },
+  ]);
+
   function onKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      paletteOpen = !paletteOpen;
+      return;
+    }
+    if (paletteOpen || !mod) return;
+    const k = e.key.toLowerCase();
+    if (k === 'enter') {
+      e.preventDefault();
+      send();
+    } else if (k === 't') {
+      e.preventDefault();
+      addTab();
+    } else if (k === 'w') {
+      e.preventDefault();
+      closeTab(activeIndex);
+    } else if (k === '\\') {
       e.preventDefault();
       orientation = orientation === 'row' ? 'column' : 'row';
+    } else if (k === 'b') {
+      e.preventDefault();
+      sidebarCollapsed = !sidebarCollapsed;
+    } else if (k === 'l') {
+      e.preventDefault();
+      focusUrl();
     }
   }
 </script>
@@ -127,6 +214,7 @@
     <button class="icon" onclick={() => (sidebarCollapsed = !sidebarCollapsed)} title="Toggle sidebar">☰</button>
     <span class="wordmark">wireforge</span>
     <span class="spacer"></span>
+    <button class="icon" onclick={() => (paletteOpen = true)} title="Command palette (Ctrl/Cmd+K)">⌘K</button>
     <button
       class="icon"
       onclick={() => (orientation = orientation === 'row' ? 'column' : 'row')}
@@ -141,20 +229,29 @@
     </select>
   </header>
 
+  <div class="tabbar">
+    {#each tabs as t, i (t.id)}
+      <div class="tab" class:active={i === activeIndex}>
+        <button class="tab-select" onclick={() => (activeIndex = i)}>
+          <span class="m mono">{t.request.method}</span>
+          <span class="label">{tabLabel(t)}</span>
+          {#if isDirty(t)}<span class="dot" title="Unsaved">•</span>{/if}
+        </button>
+        <button class="tab-close" onclick={() => closeTab(i)} aria-label="Close tab">✕</button>
+      </div>
+    {/each}
+    <button class="newtab" onclick={addTab} aria-label="New tab">+</button>
+  </div>
+
   <div class="body">
     {#if !sidebarCollapsed}
       <aside class="sidebar" style="width: {sidebarWidth}px">Collection</aside>
-      <div
-        class="resizer vertical"
-        role="separator"
-        aria-orientation="vertical"
-        onpointerdown={startSidebarResize}
-      ></div>
+      <div class="resizer vertical" role="separator" aria-orientation="vertical" onpointerdown={startSidebarResize}></div>
     {/if}
 
     <div class="main" bind:this={mainEl} style="flex-direction: {orientation}">
       <section class="pane editor" style="flex: {splitRatio}">
-        <RequestEditor bind:request {sending} onsend={send} />
+        <RequestEditor bind:request={tabs[activeIndex].request} sending={active.sending} onsend={send} />
       </section>
       <div
         class="resizer {orientation === 'row' ? 'vertical' : 'horizontal'}"
@@ -163,11 +260,13 @@
         onpointerdown={startSplitResize}
       ></div>
       <section class="pane response" style="flex: {1 - splitRatio}">
-        <ResponseViewer {response} {error} {sending} />
+        <ResponseViewer response={active.response} error={active.error} sending={active.sending} />
       </section>
     </div>
   </div>
 </main>
+
+<CommandPalette bind:open={paletteOpen} {commands} />
 
 <style>
   .shell {
@@ -206,6 +305,65 @@
     border-radius: 6px;
     padding: 4px 6px;
     font-size: 12px;
+  }
+  .tabbar {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    height: 34px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    overflow-x: auto;
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+  }
+  .tab.active {
+    background: var(--bg);
+    border-color: var(--border);
+  }
+  .tab-select {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 4px 0 10px;
+    font-size: 12px;
+    height: 100%;
+  }
+  .tab.active .tab-select {
+    color: var(--text);
+  }
+  .tab-select .m {
+    color: var(--accent);
+    font-size: 10px;
+  }
+  .tab-select .dot {
+    color: var(--accent);
+  }
+  .tab-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+  .newtab {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 10px;
+    font-size: 16px;
   }
   .body {
     display: flex;
