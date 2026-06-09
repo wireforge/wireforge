@@ -120,6 +120,9 @@ pub struct UnifiedResponse {
     pub http_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote_ip: Option<String>,
+    /// Response body as text. Large-body streaming via a custom protocol is a
+    /// later concern; v0.1 returns the body inline.
+    pub body: String,
 }
 
 // --- On-disk file schemas (subset; expanded in v0.2) ---

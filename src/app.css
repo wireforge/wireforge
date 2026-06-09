@@ -7,6 +7,10 @@
   --text: #e8ebef;
   --text-muted: #9ba6b2;
   --accent: #ff6a2c;
+  --accent-bright: #ff8347;
+  --success: #3dd68c;
+  --warning: #ffc24b;
+  --danger: #ff6a2c;
 
   --font-ui:
     Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
