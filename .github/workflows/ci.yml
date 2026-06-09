@@ -16,8 +16,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # Switch to `npm ci` once a package-lock.json is committed.
-      - run: npm install
+      - run: npm ci
       - run: npm run lint
       - run: npm run check
       - run: npm run build
@@ -47,7 +46,7 @@ jobs:
           node-version: 22
           cache: npm
       # generate_context! embeds the built frontend, so build it first.
-      - run: npm install
+      - run: npm ci
       - run: npm run build
       - name: Rustfmt
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check

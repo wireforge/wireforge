@@ -1,15 +1,15 @@
 # App icons
 
-This directory holds the application icons referenced by `tauri.conf.json`
-(`32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns`, `icon.ico`).
+The application icons referenced by `tauri.conf.json` (`32x32.png`,
+`128x128.png`, `128x128@2x.png`, `icon.icns`, `icon.ico`) are generated from
+`app-icon.svg` — the wireforge brand mark.
 
-They are **not committed yet** and must be generated before `tauri dev` or
-`tauri build` will compile (Tauri embeds an app icon at build time).
-
-Generate them from a single square source image (1024x1024 PNG recommended):
+To regenerate after editing the source:
 
 ```sh
-npm run tauri icon path/to/source.png
+npm run tauri -- icon src-tauri/icons/app-icon.svg
 ```
 
-This produces all required sizes and formats in this directory.
+Mobile (`android/`, `ios/`) and Windows Store (`Square*Logo.png`, `StoreLogo.png`)
+variants are intentionally omitted; v1 targets desktop only. `tauri icon`
+recreates them if a mobile or Store target is added later.

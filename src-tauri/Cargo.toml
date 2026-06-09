@@ -19,7 +19,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-thiserror = "2"
 
 # Heavier capability crates are added in the phases that implement them:
 #   reqwest (HttpEngine, v0.1), git2 + octocrab (VcsProvider, v0.5+),
