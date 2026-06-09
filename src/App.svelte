@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
-  import { open } from '@tauri-apps/plugin-dialog';
+  import { open, confirm } from '@tauri-apps/plugin-dialog';
   import RequestEditor from './lib/RequestEditor.svelte';
   import ResponseViewer from './lib/ResponseViewer.svelte';
   import CommandPalette from './lib/CommandPalette.svelte';
@@ -170,6 +170,112 @@
     }
   }
 
+  // --- Collection CRUD ---
+  let query = $state('');
+
+  function filterTree(input: TreeNode[], q: string): TreeNode[] {
+    const ql = q.trim().toLowerCase();
+    if (!ql) return input;
+    const out: TreeNode[] = [];
+    for (const n of input) {
+      if (n.kind === 'request') {
+        if (n.name.toLowerCase().includes(ql) || n.method.toLowerCase().includes(ql)) out.push(n);
+      } else {
+        const nameHit = n.name.toLowerCase().includes(ql);
+        const kids = filterTree(n.children, q);
+        if (nameHit || kids.length) out.push({ ...n, children: nameHit ? n.children : kids });
+      }
+    }
+    return out;
+  }
+
+  const filteredTree = $derived(filterTree(tree, query));
+
+  async function refreshTree() {
+    if (!workspaceRoot) return;
+    try {
+      tree = await invoke<TreeNode[]>('open_workspace', { root: workspaceRoot });
+    } catch {
+      tree = [];
+    }
+  }
+
+  async function createRequest(folder = '') {
+    if (!workspaceRoot) return;
+    try {
+      const path = await invoke<string>('create_request', { root: workspaceRoot, folder, name: 'New request' });
+      await refreshTree();
+      await openRequest(path);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function createFolder(parent = '') {
+    if (!workspaceRoot) return;
+    try {
+      await invoke('create_folder', { root: workspaceRoot, parent, name: 'New folder' });
+      await refreshTree();
+    } catch {
+      // ignore
+    }
+  }
+
+  async function renameNode(path: string, name: string) {
+    if (!workspaceRoot) return;
+    try {
+      await invoke('rename_node', { root: workspaceRoot, path, name });
+      const t = tabs.find((x) => x.file?.path === path);
+      if (t?.file) t.file.name = name;
+      await refreshTree();
+    } catch {
+      // ignore
+    }
+  }
+
+  async function deleteNode(path: string) {
+    if (!workspaceRoot) return;
+    let ok = true;
+    try {
+      ok = await confirm('Delete this item? This cannot be undone.', { title: 'wireforge', kind: 'warning' });
+    } catch {
+      ok = true;
+    }
+    if (!ok) return;
+    try {
+      await invoke('delete_node', { root: workspaceRoot, path });
+      tabs = tabs.filter((t) => !(t.file && (t.file.path === path || t.file.path.startsWith(`${path}/`))));
+      if (tabs.length === 0) tabs = [makeTab()];
+      if (activeIndex >= tabs.length) activeIndex = tabs.length - 1;
+      await refreshTree();
+    } catch {
+      // ignore
+    }
+  }
+
+  async function duplicateNode(path: string) {
+    if (!workspaceRoot) return;
+    try {
+      const np = await invoke<string>('duplicate_request', { root: workspaceRoot, path });
+      await refreshTree();
+      await openRequest(np);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function moveNode(src: string, dest: string) {
+    if (!workspaceRoot || src === dest) return;
+    try {
+      const np = await invoke<string>('move_node', { root: workspaceRoot, path: src, dest });
+      const t = tabs.find((x) => x.file?.path === src);
+      if (t?.file) t.file.path = np;
+      await refreshTree();
+    } catch {
+      // ignore (e.g. moving a folder into itself)
+    }
+  }
+
   // --- Theme ---
   let theme = $state<ThemeMode>(loadTheme());
   $effect(() => {
@@ -257,6 +363,8 @@
     { id: 'send', title: 'Send request', combo: 'Ctrl/Cmd+Enter', run: send },
     { id: 'save', title: 'Save request', combo: 'Ctrl/Cmd+S', run: save },
     { id: 'open', title: 'Open workspace folder…', run: openWorkspace },
+    { id: 'newreq', title: 'New request', run: () => createRequest('') },
+    { id: 'newfolder', title: 'New folder', run: () => createFolder('') },
     { id: 'newtab', title: 'New tab', combo: 'Ctrl/Cmd+T', run: addTab },
     { id: 'closetab', title: 'Close tab', combo: 'Ctrl/Cmd+W', run: () => closeTab(activeIndex) },
     { id: 'layout', title: 'Toggle request/response layout', combo: 'Ctrl/Cmd+\\', run: () => (orientation = orientation === 'row' ? 'column' : 'row') },
@@ -345,10 +453,26 @@
           <button class="ghost" onclick={openWorkspace}>{workspaceRoot ? 'Reopen' : 'Open folder'}</button>
         </div>
         {#if workspaceRoot}
-          {#if tree.length}
-            <Sidebar nodes={tree} onopen={openRequest} activePath={active?.file?.path} />
+          <div class="side-tools">
+            <input class="search" placeholder="Search…" bind:value={query} aria-label="Search requests" />
+            <button class="ghost" title="New request" aria-label="New request" onclick={() => createRequest('')}>＋ Req</button>
+            <button class="ghost" title="New folder" aria-label="New folder" onclick={() => createFolder('')}>＋ Dir</button>
+          </div>
+          {#if filteredTree.length}
+            <Sidebar
+              nodes={filteredTree}
+              onopen={openRequest}
+              activePath={active?.file?.path}
+              {query}
+              onNewRequest={(p) => createRequest(p)}
+              onNewFolder={(p) => createFolder(p)}
+              onRename={renameNode}
+              onDelete={deleteNode}
+              onDuplicate={duplicateNode}
+              onMove={moveNode}
+            />
           {:else}
-            <p class="hint">Empty workspace.</p>
+            <p class="hint">{query ? 'No matches.' : 'Empty workspace.'}</p>
           {/if}
         {:else}
           <p class="hint">Open a folder to load requests.</p>
@@ -491,6 +615,21 @@
   }
   .side-title {
     color: var(--text-muted);
+    font-size: 12px;
+  }
+  .side-tools {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+  .search {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface-code);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
     font-size: 12px;
   }
   .ghost {

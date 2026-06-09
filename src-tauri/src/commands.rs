@@ -42,6 +42,16 @@ pub fn delete_node(root: String, path: String) -> WfResult<()> {
 }
 
 #[tauri::command]
+pub fn move_node(root: String, path: String, dest: String) -> WfResult<String> {
+    workspace::move_node(Path::new(&root), &path, &dest)
+}
+
+#[tauri::command]
+pub fn duplicate_request(root: String, path: String) -> WfResult<String> {
+    workspace::duplicate_request(Path::new(&root), &path)
+}
+
+#[tauri::command]
 pub fn load_request_file(root: String, path: String) -> WfResult<RequestFile> {
     workspace::load_request_file(Path::new(&root), &path)
 }

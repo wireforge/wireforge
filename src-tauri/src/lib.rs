@@ -33,6 +33,8 @@ pub fn run() {
             commands::create_folder,
             commands::rename_node,
             commands::delete_node,
+            commands::move_node,
+            commands::duplicate_request,
             commands::load_request_file,
             commands::save_request_file
         ])

@@ -358,6 +358,111 @@ pub fn save_request_file(workspace: &Path, relpath: &str, request: &RequestFile)
     write_json(&requests_root(workspace).join(relpath), request)
 }
 
+fn node_id(path: &Path) -> WfResult<String> {
+    if path.is_dir() {
+        let f: Folder = read_json(&path.join(FOLDER_FILE))?;
+        Ok(f.id)
+    } else {
+        let r: RequestFile = read_json(path)?;
+        Ok(r.id)
+    }
+}
+
+fn split_name(file_name: &str) -> (String, String) {
+    if let Some(base) = file_name.strip_suffix(REQUEST_EXT) {
+        (base.to_string(), REQUEST_EXT.to_string())
+    } else {
+        (file_name.to_string(), String::new())
+    }
+}
+
+/// Move a request or folder into `dest_folder_relpath` (empty = root), updating
+/// both parents' order arrays. Returns the new relative path.
+pub fn move_node(
+    workspace: &Path,
+    src_relpath: &str,
+    dest_folder_relpath: &str,
+) -> WfResult<String> {
+    let root = requests_root(workspace);
+    let src = root.join(src_relpath);
+    if !src.exists() {
+        return Err(Box::new(WfError::new(
+            "WF_STORE_FILE_NOT_FOUND",
+            "source not found",
+        )));
+    }
+    let dest_dir = if dest_folder_relpath.is_empty() {
+        root.clone()
+    } else {
+        root.join(dest_folder_relpath)
+    };
+
+    if src.is_dir() {
+        let src_c = src.canonicalize().unwrap_or_else(|_| src.clone());
+        let dest_c = dest_dir.canonicalize().unwrap_or_else(|_| dest_dir.clone());
+        if dest_c.starts_with(&src_c) {
+            return Err(Box::new(WfError::new(
+                "WF_STORE_WRITE_FAILED",
+                "cannot move a folder into itself",
+            )));
+        }
+    }
+
+    let id = node_id(&src)?;
+    let src_parent = parent_relpath(src_relpath);
+
+    std::fs::create_dir_all(&dest_dir)
+        .map_err(|e| WfError::new("WF_STORE_WRITE_FAILED", e.to_string()))?;
+    let file_name = src
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| WfError::new("WF_STORE_WRITE_FAILED", "invalid source name"))?;
+    let mut new_path = dest_dir.join(&file_name);
+    if new_path.exists() && new_path != src {
+        let (base, ext) = split_name(&file_name);
+        new_path = unique_path(&dest_dir, &base, &ext);
+    }
+    std::fs::rename(&src, &new_path)
+        .map_err(|e| WfError::new("WF_STORE_WRITE_FAILED", e.to_string()))?;
+
+    if src_parent != dest_folder_relpath {
+        let src_order: Vec<String> = read_children_order(workspace, &src_parent)?
+            .into_iter()
+            .filter(|x| *x != id)
+            .collect();
+        write_children_order(workspace, &src_parent, src_order)?;
+        let mut dest_order = read_children_order(workspace, dest_folder_relpath)?;
+        if !dest_order.contains(&id) {
+            dest_order.push(id);
+        }
+        write_children_order(workspace, dest_folder_relpath, dest_order)?;
+    }
+    Ok(rel(&root, &new_path))
+}
+
+/// Duplicate a request as a sibling with a new id and a " copy" name.
+pub fn duplicate_request(workspace: &Path, relpath: &str) -> WfResult<String> {
+    let root = requests_root(workspace);
+    let src = root.join(relpath);
+    let mut req: RequestFile = read_json(&src)?;
+    let dir = src
+        .parent()
+        .map(|p| p.to_path_buf())
+        .ok_or_else(|| WfError::new("WF_STORE_WRITE_FAILED", "no parent directory"))?;
+
+    req.id = new_id("req");
+    req.name = format!("{} copy", req.name);
+    let path = unique_path(&dir, &slugify(&req.name), REQUEST_EXT);
+    write_json(&path, &req)?;
+
+    let parent = parent_relpath(relpath);
+    let mut order = read_children_order(workspace, &parent)?;
+    order.push(req.id.clone());
+    write_children_order(workspace, &parent, order)?;
+
+    Ok(rel(&root, &path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,6 +514,48 @@ mod tests {
 
         delete(&ws, &path).unwrap();
         assert!(load_tree(&ws).unwrap().is_empty());
+
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn move_request_between_folders() {
+        let ws = temp_ws();
+        let a = create_folder(&ws, "", "A").unwrap();
+        let b = create_folder(&ws, "", "B").unwrap();
+        let req = create_request(&ws, &a, "Endpoint").unwrap();
+
+        let moved = move_node(&ws, &req, &b).unwrap();
+        assert!(moved.starts_with(&format!("{b}/")));
+        assert_eq!(load_request_file(&ws, &moved).unwrap().name, "Endpoint");
+
+        let tree = load_tree(&ws).unwrap();
+        for n in &tree {
+            if let Node::Folder { name, children, .. } = n {
+                match name.as_str() {
+                    "A" => assert_eq!(children.len(), 0, "source folder should be empty"),
+                    "B" => assert_eq!(children.len(), 1, "dest folder should hold the request"),
+                    _ => {}
+                }
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn duplicate_makes_a_copy() {
+        let ws = temp_ws();
+        let req = create_request(&ws, "", "Ping").unwrap();
+
+        let dup = duplicate_request(&ws, &req).unwrap();
+        assert_ne!(dup, req);
+        assert_eq!(load_request_file(&ws, &dup).unwrap().name, "Ping copy");
+        assert_ne!(
+            load_request_file(&ws, &req).unwrap().id,
+            load_request_file(&ws, &dup).unwrap().id
+        );
+        assert_eq!(load_tree(&ws).unwrap().len(), 2);
 
         let _ = std::fs::remove_dir_all(&ws);
     }
