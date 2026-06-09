@@ -22,6 +22,26 @@ export type Auth =
   | { type: 'basic'; username: string; password: string }
   | { type: 'apiKey'; placement: 'header' | 'query'; key: string; value: string };
 
+// A request file on disk (mirrors the Rust RequestFile).
+export interface RequestFile {
+  format: string;
+  version: number;
+  id: string;
+  name: string;
+  description?: string;
+  method: HttpMethod;
+  url: string;
+  params: KeyValue[];
+  headers: KeyValue[];
+  auth: Auth;
+  body: Body;
+}
+
+// A node in the collection tree (mirrors the Rust workspace::Node).
+export type TreeNode =
+  | { kind: 'folder'; id: string; name: string; path: string; children: TreeNode[] }
+  | { kind: 'request'; id: string; name: string; method: HttpMethod; path: string };
+
 export interface UnifiedRequest {
   method: HttpMethod;
   url: string;

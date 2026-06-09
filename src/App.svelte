@@ -1,12 +1,14 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
+  import { open } from '@tauri-apps/plugin-dialog';
   import RequestEditor from './lib/RequestEditor.svelte';
   import ResponseViewer from './lib/ResponseViewer.svelte';
   import CommandPalette from './lib/CommandPalette.svelte';
+  import Sidebar from './lib/Sidebar.svelte';
   import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
-  import type { UnifiedRequest, UnifiedResponse, WfError } from './lib/types';
+  import type { UnifiedRequest, UnifiedResponse, RequestFile, TreeNode, WfError } from './lib/types';
 
-  // --- Tabs (one open request each) ---
+  // --- Tabs (file-backed when opened from the collection) ---
   interface Tab {
     id: number;
     request: UnifiedRequest;
@@ -14,6 +16,7 @@
     response: UnifiedResponse | null;
     error: WfError | null;
     sending: boolean;
+    file?: { path: string; id: string; name: string };
   }
 
   let nextId = 1;
@@ -50,6 +53,7 @@
   }
 
   function tabLabel(t: Tab): string {
+    if (t.file) return t.file.name;
     try {
       const u = new URL(t.request.url);
       return u.pathname.split('/').filter(Boolean).pop() || u.host;
@@ -79,6 +83,91 @@
 
   function focusUrl() {
     window.dispatchEvent(new Event('wf:focus-url'));
+  }
+
+  // --- Workspace + collection tree ---
+  let workspaceRoot = $state<string | null>(localStorage.getItem('wf.workspace'));
+  let tree = $state<TreeNode[]>([]);
+
+  $effect(() => {
+    const root = workspaceRoot;
+    if (!root) {
+      tree = [];
+      return;
+    }
+    invoke<TreeNode[]>('open_workspace', { root })
+      .then((t) => (tree = t))
+      .catch(() => (tree = []));
+  });
+
+  async function openWorkspace() {
+    try {
+      const dir = await open({ directory: true, title: 'Open workspace folder' });
+      if (typeof dir === 'string') {
+        workspaceRoot = dir;
+        localStorage.setItem('wf.workspace', dir);
+      }
+    } catch {
+      // dialog unavailable (e.g. plain browser preview)
+    }
+  }
+
+  async function openRequest(path: string) {
+    if (!workspaceRoot) return;
+    const existing = tabs.findIndex((t) => t.file?.path === path);
+    if (existing >= 0) {
+      activeIndex = existing;
+      return;
+    }
+    try {
+      const rf = await invoke<RequestFile>('load_request_file', { root: workspaceRoot, path });
+      const request: UnifiedRequest = {
+        method: rf.method,
+        url: rf.url,
+        params: rf.params ?? [],
+        headers: rf.headers ?? [],
+        auth: rf.auth ?? { type: 'none' },
+        body: rf.body ?? { mode: 'none' },
+      };
+      tabs = [
+        ...tabs,
+        {
+          id: nextId++,
+          request,
+          pristine: JSON.stringify(request),
+          response: null,
+          error: null,
+          sending: false,
+          file: { path, id: rf.id, name: rf.name },
+        },
+      ];
+      activeIndex = tabs.length - 1;
+    } catch {
+      // ignore load failure for now
+    }
+  }
+
+  async function save() {
+    const t = tabs[activeIndex];
+    if (!t?.file || !workspaceRoot) return;
+    const rf: RequestFile = {
+      format: 'wireforge.request',
+      version: 1,
+      id: t.file.id,
+      name: t.file.name,
+      method: t.request.method,
+      url: t.request.url,
+      params: t.request.params,
+      headers: t.request.headers,
+      auth: t.request.auth,
+      body: t.request.body,
+    };
+    try {
+      await invoke('save_request_file', { root: workspaceRoot, path: t.file.path, request: rf });
+      t.pristine = JSON.stringify(t.request);
+    } catch {
+      // surface save errors in a later pass
+    }
   }
 
   // --- Theme ---
@@ -166,6 +255,8 @@
 
   const commands = $derived([
     { id: 'send', title: 'Send request', combo: 'Ctrl/Cmd+Enter', run: send },
+    { id: 'save', title: 'Save request', combo: 'Ctrl/Cmd+S', run: save },
+    { id: 'open', title: 'Open workspace folder…', run: openWorkspace },
     { id: 'newtab', title: 'New tab', combo: 'Ctrl/Cmd+T', run: addTab },
     { id: 'closetab', title: 'Close tab', combo: 'Ctrl/Cmd+W', run: () => closeTab(activeIndex) },
     { id: 'layout', title: 'Toggle request/response layout', combo: 'Ctrl/Cmd+\\', run: () => (orientation = orientation === 'row' ? 'column' : 'row') },
@@ -188,6 +279,9 @@
     if (k === 'enter') {
       e.preventDefault();
       send();
+    } else if (k === 's') {
+      e.preventDefault();
+      save();
     } else if (k === 't') {
       e.preventDefault();
       addTab();
@@ -245,7 +339,21 @@
 
   <div class="body">
     {#if !sidebarCollapsed}
-      <aside class="sidebar" style="width: {sidebarWidth}px">Collection</aside>
+      <aside class="sidebar" style="width: {sidebarWidth}px">
+        <div class="side-head">
+          <span class="side-title">Collection</span>
+          <button class="ghost" onclick={openWorkspace}>{workspaceRoot ? 'Reopen' : 'Open folder'}</button>
+        </div>
+        {#if workspaceRoot}
+          {#if tree.length}
+            <Sidebar nodes={tree} onopen={openRequest} activePath={active?.file?.path} />
+          {:else}
+            <p class="hint">Empty workspace.</p>
+          {/if}
+        {:else}
+          <p class="hint">Open a folder to load requests.</p>
+        {/if}
+      </aside>
       <div class="resizer vertical" role="separator" aria-orientation="vertical" onpointerdown={startSidebarResize}></div>
     {/if}
 
@@ -372,9 +480,32 @@
   }
   .sidebar {
     flex: 0 0 auto;
-    padding: 12px;
+    padding: 8px;
     overflow: auto;
+  }
+  .side-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .side-title {
     color: var(--text-muted);
+    font-size: 12px;
+  }
+  .ghost {
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  .hint {
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 4px 6px;
   }
   .main {
     display: flex;
