@@ -1,13 +1,13 @@
 //! Importer / Exporter: converts external formats to and from wireforge
 //! collection files. Postman v2.1 (v0.3), cURL (v1.0), OpenAPI and HAR (v1.x).
 
-use crate::error::WfError;
+use crate::error::WfResult;
 use std::path::Path;
 
 pub trait Importer {
-    fn import(&self, source: &Path) -> Result<(), WfError>;
+    fn import(&self, source: &Path) -> WfResult<()>;
 }
 
 pub trait Exporter {
-    fn export(&self, destination: &Path) -> Result<(), WfError>;
+    fn export(&self, destination: &Path) -> WfResult<()>;
 }

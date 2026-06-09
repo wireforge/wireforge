@@ -73,3 +73,7 @@ impl std::fmt::Display for WfError {
 }
 
 impl std::error::Error for WfError {}
+
+/// Convenience result type. The error is boxed so the `Ok` path stays small and
+/// `Result<T, _>` does not balloon with the rich error envelope.
+pub type WfResult<T> = Result<T, Box<WfError>>;
