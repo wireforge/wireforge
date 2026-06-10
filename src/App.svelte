@@ -10,6 +10,7 @@
   import GitPanel from './lib/GitPanel.svelte';
   import GitHubAuth from './lib/GitHubAuth.svelte';
   import ConflictPanel from './lib/ConflictPanel.svelte';
+  import CurlImport from './lib/CurlImport.svelte';
   import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
   import type {
     UnifiedRequest,
@@ -61,6 +62,25 @@
     tabs = [...tabs, makeTab()];
     activeIndex = tabs.length - 1;
   }
+
+  // Open a parsed request (e.g. from cURL import) as a new, unsaved tab.
+  function addTabFromRequest(rf: RequestFile) {
+    const request: UnifiedRequest = {
+      method: rf.method,
+      url: rf.url,
+      params: rf.params ?? [],
+      headers: rf.headers ?? [],
+      auth: rf.auth ?? { type: 'none' },
+      body: rf.body ?? { mode: 'none' },
+    };
+    tabs = [
+      ...tabs,
+      { id: nextId++, request, pristine: JSON.stringify(request), response: null, error: null, sending: false },
+    ];
+    activeIndex = tabs.length - 1;
+  }
+
+  let curlOpen = $state(false);
 
   function closeTab(i: number) {
     tabs = tabs.filter((_, idx) => idx !== i);
@@ -601,6 +621,7 @@
     { id: 'save', title: 'Save request', combo: 'Ctrl/Cmd+S', run: save },
     { id: 'open', title: 'Open workspace folder…', run: openWorkspace },
     { id: 'import', title: 'Import Postman file…', run: importFile },
+    { id: 'curl', title: 'Import cURL…', run: () => (curlOpen = true) },
     { id: 'envs', title: 'Manage environments & secrets…', run: () => openEnvManager(false) },
     { id: 'commit', title: 'Commit changes…', run: openGitPanel },
     { id: 'pull', title: 'Pull from origin', run: doPull },
@@ -738,6 +759,7 @@
             <button class="ghost" title="New request" aria-label="New request" onclick={() => createRequest('')}>＋ Req</button>
             <button class="ghost" title="New folder" aria-label="New folder" onclick={() => createFolder('')}>＋ Dir</button>
             <button class="ghost" title="Import Postman file" aria-label="Import Postman file" onclick={importFile}>Import</button>
+            <button class="ghost" title="Import cURL command" aria-label="Import cURL command" onclick={() => (curlOpen = true)}>cURL</button>
           </div>
           {#if filteredTree.length}
             <Sidebar
@@ -788,6 +810,8 @@
 <CommandPalette bind:open={paletteOpen} {commands} />
 
 <GitHubAuth bind:open={githubAuthOpen} bind:host={ghHost} bind:clientId={ghClientId} />
+
+<CurlImport bind:open={curlOpen} oncreated={addTabFromRequest} />
 
 <ImportReview
   bind:open={importOpen}

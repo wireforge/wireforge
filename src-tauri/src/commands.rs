@@ -93,6 +93,11 @@ pub fn save_request_file(root: String, path: String, request: RequestFile) -> Wf
 }
 
 #[tauri::command]
+pub fn import_curl(text: String) -> WfResult<RequestFile> {
+    crate::curl::parse(&text)
+}
+
+#[tauri::command]
 pub fn import_preview(path: String) -> WfResult<ImportPreview> {
     postman::preview(&read_import_file(&path)?)
 }

@@ -14,6 +14,7 @@ mod commands;
 
 pub mod agent_surface;
 pub mod collection_store;
+pub mod curl;
 pub mod environments;
 pub mod github;
 pub mod http_engine;
@@ -40,6 +41,7 @@ pub fn run() {
             commands::duplicate_request,
             commands::load_request_file,
             commands::save_request_file,
+            commands::import_curl,
             commands::import_preview,
             commands::import_apply,
             commands::list_environments,
