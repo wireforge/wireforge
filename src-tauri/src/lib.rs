@@ -41,6 +41,8 @@ pub fn run() {
             commands::duplicate_request,
             commands::load_request_file,
             commands::save_request_file,
+            commands::export_docs,
+            commands::save_text,
             commands::import_curl,
             commands::import_preview,
             commands::import_apply,

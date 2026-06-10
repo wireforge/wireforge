@@ -5,12 +5,25 @@
     response,
     error,
     sending,
-  }: { response: UnifiedResponse | null; error: WfError | null; sending: boolean } = $props();
+    onsavebody,
+  }: {
+    response: UnifiedResponse | null;
+    error: WfError | null;
+    sending: boolean;
+    onsavebody?: (content: string) => void;
+  } = $props();
 
   let tab = $state<'body' | 'headers'>('body');
 
+  // Above this size we stop pretty-printing and only render a prefix, so a huge
+  // body never freezes the UI; the full body stays available via Save.
+  const LIMIT = 262144; // 256 KB
+
+  const isLarge = $derived(!!response && response.body.length > LIMIT);
+
   const prettyBody = $derived.by(() => {
     if (!response) return '';
+    if (response.body.length > LIMIT) return response.body.slice(0, LIMIT);
     const contentType =
       response.headers.find((h) => h.key.toLowerCase() === 'content-type')?.value ?? '';
     if (contentType.includes('json')) {
@@ -54,6 +67,16 @@
   </div>
 
   {#if tab === 'body'}
+    {#if isLarge}
+      <div class="large-note">
+        <span>
+          Large response — showing the first {Math.round(LIMIT / 1024)} KB of {response.body.length.toLocaleString()} characters.
+        </span>
+        {#if onsavebody}
+          <button class="save" onclick={() => onsavebody?.(response.body)}>Save full body…</button>
+        {/if}
+      </div>
+    {/if}
     <pre class="body mono">{prettyBody}</pre>
   {:else}
     <table class="headers mono">
@@ -111,6 +134,29 @@
   .tabs button.active {
     color: var(--text);
     border-color: var(--accent);
+  }
+  .large-note {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: space-between;
+    background: var(--surface-code);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .large-note .save {
+    flex: 0 0 auto;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-size: 12px;
   }
   .body {
     margin: 0;

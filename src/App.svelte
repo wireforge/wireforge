@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
-  import { open, confirm } from '@tauri-apps/plugin-dialog';
+  import { open, confirm, save as saveDialog } from '@tauri-apps/plugin-dialog';
   import RequestEditor from './lib/RequestEditor.svelte';
   import ResponseViewer from './lib/ResponseViewer.svelte';
   import CommandPalette from './lib/CommandPalette.svelte';
@@ -96,6 +96,26 @@
   }
 
   let curlOpen = $state(false);
+
+  // Save arbitrary text to a user-chosen path (response bodies, docs export).
+  async function saveTextToFile(content: string, suggestedName: string) {
+    try {
+      const path = await saveDialog({ defaultPath: suggestedName });
+      if (typeof path === 'string') await invoke('save_text', { path, content });
+    } catch {
+      // dialog unavailable (plain browser preview)
+    }
+  }
+
+  async function exportDocs() {
+    if (!workspaceRoot) return;
+    try {
+      const md = await invoke<string>('export_docs', { root: workspaceRoot });
+      await saveTextToFile(md, 'wireforge-docs.md');
+    } catch (e) {
+      setNotice(errMsg(e));
+    }
+  }
 
   function closeTab(i: number) {
     tabs = tabs.filter((_, idx) => idx !== i);
@@ -676,6 +696,7 @@
     { id: 'import', title: 'Import Postman file…', run: importFile },
     { id: 'curl', title: 'Import cURL…', run: () => (curlOpen = true) },
     { id: 'envs', title: 'Manage environments & secrets…', run: () => openEnvManager(false) },
+    { id: 'docs', title: 'Export docs (Markdown)…', run: exportDocs },
     { id: 'commit', title: 'Commit changes…', run: openGitPanel },
     { id: 'pull', title: 'Pull from origin', run: doPull },
     { id: 'push', title: 'Push to origin', run: doPush },
@@ -812,6 +833,7 @@
             <button class="ghost" title="New folder" aria-label="New folder" onclick={() => createFolder('')}>＋ Dir</button>
             <button class="ghost" title="Import Postman file" aria-label="Import Postman file" onclick={importFile}>Import</button>
             <button class="ghost" title="Import cURL command" aria-label="Import cURL command" onclick={() => (curlOpen = true)}>cURL</button>
+            <button class="ghost" title="Export docs (Markdown)" aria-label="Export docs" onclick={exportDocs}>Docs</button>
           </div>
           {#if filteredTree.length}
             <Sidebar
@@ -853,7 +875,12 @@
         onpointerdown={startSplitResize}
       ></div>
       <section class="pane response" style="flex: {1 - splitRatio}">
-        <ResponseViewer response={active.response} error={active.error} sending={active.sending} />
+        <ResponseViewer
+          response={active.response}
+          error={active.error}
+          sending={active.sending}
+          onsavebody={(content) => saveTextToFile(content, 'response-body.txt')}
+        />
       </section>
     </div>
   </div>

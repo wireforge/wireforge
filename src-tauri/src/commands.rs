@@ -154,6 +154,18 @@ pub fn delete_secret(root: String, environment: String, name: String) -> WfResul
 }
 
 #[tauri::command]
+pub fn export_docs(root: String) -> WfResult<String> {
+    workspace::export_markdown(Path::new(&root))
+}
+
+/// Write text to an arbitrary path the user chose via a save dialog.
+#[tauri::command]
+pub fn save_text(path: String, content: String) -> WfResult<()> {
+    std::fs::write(&path, content)
+        .map_err(|e| Box::new(WfError::new("WF_STORE_WRITE_FAILED", e.to_string())))
+}
+
+#[tauri::command]
 pub fn git_status(root: String) -> WfResult<RepoStatus> {
     vcs::repo_status(Path::new(&root))
 }

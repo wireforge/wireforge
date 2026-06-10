@@ -397,6 +397,74 @@ pub fn save_request_file(workspace: &Path, relpath: &str, request: &RequestFile)
     write_json(&requests_root(workspace).join(relpath), request)
 }
 
+fn method_str(m: HttpMethod) -> &'static str {
+    match m {
+        HttpMethod::Get => "GET",
+        HttpMethod::Post => "POST",
+        HttpMethod::Put => "PUT",
+        HttpMethod::Patch => "PATCH",
+        HttpMethod::Delete => "DELETE",
+        HttpMethod::Head => "HEAD",
+        HttpMethod::Options => "OPTIONS",
+    }
+}
+
+fn render_docs(workspace: &Path, nodes: &[Node], depth: usize, out: &mut String) -> WfResult<()> {
+    let h = "#".repeat(depth.min(6));
+    for node in nodes {
+        match node {
+            Node::Folder { name, children, .. } => {
+                out.push_str(&format!("{h} {name}\n\n"));
+                render_docs(workspace, children, depth + 1, out)?;
+            }
+            Node::Request {
+                name, method, path, ..
+            } => {
+                out.push_str(&format!("{h} {name} `{}`\n\n", method_str(*method)));
+                let rf = load_request_file(workspace, path)?;
+                out.push_str(&format!("`{}`\n\n", rf.url));
+                if let Some(d) = rf.description.as_deref().filter(|d| !d.is_empty()) {
+                    out.push_str(&format!("{d}\n\n"));
+                }
+                let headers: Vec<_> = rf.headers.iter().filter(|h| h.enabled).collect();
+                if !headers.is_empty() {
+                    out.push_str("**Headers**\n\n");
+                    for kv in headers {
+                        out.push_str(&format!("- `{}: {}`\n", kv.key, kv.value));
+                    }
+                    out.push('\n');
+                }
+                let params: Vec<_> = rf.params.iter().filter(|p| p.enabled).collect();
+                if !params.is_empty() {
+                    out.push_str("**Query**\n\n");
+                    for kv in params {
+                        out.push_str(&format!("- `{} = {}`\n", kv.key, kv.value));
+                    }
+                    out.push('\n');
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Render the collection as Markdown documentation. Files only ever contain
+/// `{{variable}}` placeholders, never resolved secret values, so the export is
+/// safe to share.
+pub fn export_markdown(workspace: &Path) -> WfResult<String> {
+    let title = read_json::<Collection>(&collection_dir(workspace).join("collection.json"))
+        .map(|c| c.name)
+        .unwrap_or_else(|_| "Collection".to_string());
+    let tree = load_tree(workspace)?;
+    let mut out = format!("# {title}\n\n");
+    if tree.is_empty() {
+        out.push_str("_No requests yet._\n");
+    } else {
+        render_docs(workspace, &tree, 2, &mut out)?;
+    }
+    Ok(out)
+}
+
 fn node_id(path: &Path) -> WfResult<String> {
     if path.is_dir() {
         let f: Folder = read_json(&path.join(FOLDER_FILE))?;
@@ -553,6 +621,23 @@ mod tests {
 
         delete(&ws, &path).unwrap();
         assert!(load_tree(&ws).unwrap().is_empty());
+
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn export_markdown_lists_folders_and_requests() {
+        let ws = temp_ws();
+        let folder = create_folder(&ws, "", "Users").unwrap();
+        let req = create_request(&ws, &folder, "List users").unwrap();
+        let mut rf = load_request_file(&ws, &req).unwrap();
+        rf.url = "{{baseUrl}}/users".to_string();
+        save_request_file(&ws, &req, &rf).unwrap();
+
+        let md = export_markdown(&ws).unwrap();
+        assert!(md.contains("## Users"), "folder heading: {md}");
+        assert!(md.contains("### List users `GET`"), "request heading: {md}");
+        assert!(md.contains("`{{baseUrl}}/users`"), "url: {md}");
 
         let _ = std::fs::remove_dir_all(&ws);
     }
