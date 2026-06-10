@@ -16,6 +16,7 @@ pub mod agent_surface;
 pub mod collection_store;
 pub mod http_engine;
 pub mod importer;
+pub mod postman;
 pub mod secret_resolver;
 pub mod theme_store;
 pub mod variable_resolver;
@@ -36,7 +37,9 @@ pub fn run() {
             commands::move_node,
             commands::duplicate_request,
             commands::load_request_file,
-            commands::save_request_file
+            commands::save_request_file,
+            commands::import_preview,
+            commands::import_apply
         ])
         .run(tauri::generate_context!())
         .expect("error while running wireforge application");

@@ -53,7 +53,7 @@ fn parent_relpath(relpath: &str) -> String {
     }
 }
 
-fn slugify(name: &str) -> String {
+pub(crate) fn slugify(name: &str) -> String {
     let mut s: String = name
         .trim()
         .to_lowercase()
@@ -71,7 +71,7 @@ fn slugify(name: &str) -> String {
     }
 }
 
-fn unique_path(dir: &Path, base: &str, ext: &str) -> PathBuf {
+pub(crate) fn unique_path(dir: &Path, base: &str, ext: &str) -> PathBuf {
     let mut candidate = dir.join(format!("{base}{ext}"));
     let mut n = 2;
     while candidate.exists() {
@@ -89,7 +89,7 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> WfResult<T> {
     Ok(value)
 }
 
-fn write_json<T: Serialize>(path: &Path, value: &T) -> WfResult<()> {
+pub(crate) fn write_json<T: Serialize>(path: &Path, value: &T) -> WfResult<()> {
     let json =
         to_canonical_json(value).map_err(|e| WfError::new("WF_SERIALIZE_FAILED", e.to_string()))?;
     if let Some(dir) = path.parent() {
@@ -352,6 +352,28 @@ pub fn delete(workspace: &Path, relpath: &str) -> WfResult<()> {
 
 pub fn load_request_file(workspace: &Path, relpath: &str) -> WfResult<RequestFile> {
     read_json(&requests_root(workspace).join(relpath))
+}
+
+/// Merge variables into the main collection's `variables` map, keeping existing
+/// keys. Returns how many were added.
+pub fn merge_collection_variables(workspace: &Path, vars: &[(String, String)]) -> WfResult<u32> {
+    if vars.is_empty() {
+        return Ok(0);
+    }
+    ensure_collection(workspace)?;
+    let col_path = collection_dir(workspace).join("collection.json");
+    let mut c: Collection = read_json(&col_path)?;
+    let mut added = 0;
+    for (k, v) in vars {
+        if !c.variables.contains_key(k) {
+            c.variables.insert(k.clone(), v.clone());
+            added += 1;
+        }
+    }
+    if added > 0 {
+        write_json(&col_path, &c)?;
+    }
+    Ok(added)
 }
 
 pub fn save_request_file(workspace: &Path, relpath: &str, request: &RequestFile) -> WfResult<()> {

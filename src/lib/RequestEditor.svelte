@@ -14,6 +14,7 @@
   let tab = $state<'params' | 'headers' | 'body' | 'auth'>('params');
 
   function setBodyMode(mode: string) {
+    if (mode === request.body.mode) return;
     if (mode === 'json') {
       request.body = { mode: 'json', text: request.body.mode === 'json' ? request.body.text : '{\n  \n}' };
     } else if (mode === 'raw') {
@@ -22,6 +23,14 @@
         contentType: 'text/plain',
         text: request.body.mode === 'raw' ? request.body.text : '',
       };
+    } else if (mode === 'formUrlEncoded') {
+      request.body = {
+        mode: 'formUrlEncoded',
+        fields: request.body.mode === 'formUrlEncoded' ? request.body.fields : [],
+      };
+    } else if (mode === 'multipart' || mode === 'graphql') {
+      // Imported-only modes; not editable yet, so never switch into them.
+      return;
     } else {
       request.body = { mode: 'none' };
     }
@@ -79,10 +88,20 @@
           <option value="none">None</option>
           <option value="json">JSON</option>
           <option value="raw">Raw</option>
+          <option value="formUrlEncoded">Form URL-encoded</option>
+          {#if request.body.mode === 'multipart' || request.body.mode === 'graphql'}
+            <option value={request.body.mode}>{request.body.mode === 'multipart' ? 'Multipart (imported)' : 'GraphQL (imported)'}</option>
+          {/if}
         </select>
       </div>
       {#if request.body.mode === 'json' || request.body.mode === 'raw'}
         <textarea class="body mono" bind:value={request.body.text} spellcheck="false"></textarea>
+      {:else if request.body.mode === 'formUrlEncoded'}
+        <KeyValueEditor bind:items={request.body.fields} />
+      {:else if request.body.mode === 'multipart' || request.body.mode === 'graphql'}
+        <p class="body-hint">
+          This body was imported and isn't editable yet. It is preserved in the request file.
+        </p>
       {/if}
     {:else if tab === 'auth'}
       <AuthEditor bind:auth={request.auth} />
@@ -163,5 +182,10 @@
   }
   .mono {
     font-family: var(--font-mono);
+  }
+  .body-hint {
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 8px 2px;
   }
 </style>

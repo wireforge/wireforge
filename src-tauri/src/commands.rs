@@ -1,10 +1,20 @@
 //! Tauri command surface — a thin layer over the backend modules.
 
-use crate::error::WfResult;
+use crate::error::{WfError, WfResult};
 use crate::http_engine::{HttpEngine, ReqwestEngine};
 use crate::model::{RequestFile, UnifiedRequest, UnifiedResponse};
+use crate::postman::{self, ImportPreview, ImportResult};
 use crate::workspace::{self, Node};
 use std::path::Path;
+
+fn read_import_file(path: &str) -> WfResult<String> {
+    std::fs::read_to_string(path).map_err(|e| {
+        Box::new(WfError::new(
+            "WF_IMPORT_PARSE_FAILED",
+            format!("could not read file: {e}"),
+        ))
+    })
+}
 
 #[tauri::command]
 pub fn app_info() -> String {
@@ -59,4 +69,14 @@ pub fn load_request_file(root: String, path: String) -> WfResult<RequestFile> {
 #[tauri::command]
 pub fn save_request_file(root: String, path: String, request: RequestFile) -> WfResult<()> {
     workspace::save_request_file(Path::new(&root), &path, &request)
+}
+
+#[tauri::command]
+pub fn import_preview(path: String) -> WfResult<ImportPreview> {
+    postman::preview(&read_import_file(&path)?)
+}
+
+#[tauri::command]
+pub fn import_apply(root: String, path: String) -> WfResult<ImportResult> {
+    postman::apply(Path::new(&root), &read_import_file(&path)?)
 }

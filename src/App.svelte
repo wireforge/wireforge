@@ -5,8 +5,17 @@
   import ResponseViewer from './lib/ResponseViewer.svelte';
   import CommandPalette from './lib/CommandPalette.svelte';
   import Sidebar from './lib/Sidebar.svelte';
+  import ImportReview from './lib/ImportReview.svelte';
   import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
-  import type { UnifiedRequest, UnifiedResponse, RequestFile, TreeNode, WfError } from './lib/types';
+  import type {
+    UnifiedRequest,
+    UnifiedResponse,
+    RequestFile,
+    TreeNode,
+    WfError,
+    ImportPreview,
+    ImportResult,
+  } from './lib/types';
 
   // --- Tabs (file-backed when opened from the collection) ---
   interface Tab {
@@ -276,6 +285,60 @@
     }
   }
 
+  // --- Postman import (preview → review → apply) ---
+  let importOpen = $state(false);
+  let importPreviewData = $state<ImportPreview | null>(null);
+  let importResult = $state<ImportResult | null>(null);
+  let importError = $state<string | null>(null);
+  let importBusy = $state(false);
+  let importFilePath: string | null = null;
+
+  const errMsg = (e: unknown) => (e as WfError)?.message ?? String(e);
+
+  async function importFile() {
+    if (!workspaceRoot) {
+      await openWorkspace();
+      if (!workspaceRoot) return;
+    }
+    let file: string | string[] | null = null;
+    try {
+      file = await open({
+        title: 'Import Postman collection or environment',
+        filters: [{ name: 'Postman JSON', extensions: ['json'] }],
+      });
+    } catch {
+      return; // dialog unavailable (plain browser preview)
+    }
+    if (typeof file !== 'string') return;
+
+    importFilePath = file;
+    importPreviewData = null;
+    importResult = null;
+    importError = null;
+    try {
+      importPreviewData = await invoke<ImportPreview>('import_preview', { path: file });
+    } catch (e) {
+      importError = errMsg(e);
+    }
+    importOpen = true;
+  }
+
+  async function confirmImport() {
+    if (!workspaceRoot || !importFilePath || importBusy) return;
+    importBusy = true;
+    try {
+      importResult = await invoke<ImportResult>('import_apply', {
+        root: workspaceRoot,
+        path: importFilePath,
+      });
+      await refreshTree();
+    } catch (e) {
+      importError = errMsg(e);
+    } finally {
+      importBusy = false;
+    }
+  }
+
   // --- Theme ---
   let theme = $state<ThemeMode>(loadTheme());
   $effect(() => {
@@ -363,6 +426,7 @@
     { id: 'send', title: 'Send request', combo: 'Ctrl/Cmd+Enter', run: send },
     { id: 'save', title: 'Save request', combo: 'Ctrl/Cmd+S', run: save },
     { id: 'open', title: 'Open workspace folder…', run: openWorkspace },
+    { id: 'import', title: 'Import Postman file…', run: importFile },
     { id: 'newreq', title: 'New request', run: () => createRequest('') },
     { id: 'newfolder', title: 'New folder', run: () => createFolder('') },
     { id: 'newtab', title: 'New tab', combo: 'Ctrl/Cmd+T', run: addTab },
@@ -457,6 +521,7 @@
             <input class="search" placeholder="Search…" bind:value={query} aria-label="Search requests" />
             <button class="ghost" title="New request" aria-label="New request" onclick={() => createRequest('')}>＋ Req</button>
             <button class="ghost" title="New folder" aria-label="New folder" onclick={() => createFolder('')}>＋ Dir</button>
+            <button class="ghost" title="Import Postman file" aria-label="Import Postman file" onclick={importFile}>Import</button>
           </div>
           {#if filteredTree.length}
             <Sidebar
@@ -499,6 +564,15 @@
 </main>
 
 <CommandPalette bind:open={paletteOpen} {commands} />
+
+<ImportReview
+  bind:open={importOpen}
+  preview={importPreviewData}
+  result={importResult}
+  error={importError}
+  busy={importBusy}
+  onconfirm={confirmImport}
+/>
 
 <style>
   .shell {

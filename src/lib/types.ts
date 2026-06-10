@@ -10,11 +10,17 @@ export interface KeyValue {
   description?: string;
 }
 
+export type MultipartField =
+  | { kind: 'text'; enabled: boolean; key: string; value: string }
+  | { kind: 'file'; enabled: boolean; key: string; path: string };
+
 export type Body =
   | { mode: 'none' }
   | { mode: 'json'; text: string }
   | { mode: 'raw'; contentType: string; text: string }
-  | { mode: 'formUrlEncoded'; fields: KeyValue[] };
+  | { mode: 'formUrlEncoded'; fields: KeyValue[] }
+  | { mode: 'multipart'; fields: MultipartField[] }
+  | { mode: 'graphql'; query: string; variables: string };
 
 export type Auth =
   | { type: 'none' }
@@ -67,4 +73,29 @@ export interface WfError {
   message: string;
   severity: string;
   retryable: boolean;
+}
+
+// Postman import (mirrors the Rust postman module).
+export interface ImportWarning {
+  path: string;
+  message: string;
+}
+
+export interface ImportPreview {
+  kind: 'collection' | 'environment';
+  name: string;
+  requests: number;
+  folders: number;
+  variables: number;
+  warnings: ImportWarning[];
+}
+
+export interface ImportResult {
+  kind: string;
+  name: string;
+  requests: number;
+  folders: number;
+  variables: number;
+  rootPath?: string;
+  environmentFile?: string;
 }
