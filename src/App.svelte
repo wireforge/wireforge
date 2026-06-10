@@ -154,6 +154,50 @@
     if (workspaceRoot && gitStatus?.isRepo) gitPanelOpen = true;
   }
 
+  let gitBusy = $state(false);
+  let gitNotice = $state<string | null>(null);
+  function setNotice(text: string) {
+    gitNotice = text;
+    setTimeout(() => {
+      if (gitNotice === text) gitNotice = null;
+    }, 4000);
+  }
+
+  async function doPull() {
+    if (!workspaceRoot || gitBusy) return;
+    gitBusy = true;
+    try {
+      const out = await invoke<{ status: string }>('git_pull', { root: workspaceRoot });
+      const label =
+        out.status === 'upToDate'
+          ? 'Already up to date'
+          : out.status === 'fastForward'
+            ? 'Pulled (fast-forward)'
+            : 'Pulled (merged)';
+      setNotice(label);
+      await refreshTree();
+    } catch (e) {
+      setNotice(errMsg(e));
+      refreshGit();
+    } finally {
+      gitBusy = false;
+    }
+  }
+
+  async function doPush() {
+    if (!workspaceRoot || gitBusy) return;
+    gitBusy = true;
+    try {
+      await invoke('git_push', { root: workspaceRoot });
+      setNotice('Pushed to origin');
+      refreshGit();
+    } catch (e) {
+      setNotice(errMsg(e));
+    } finally {
+      gitBusy = false;
+    }
+  }
+
   // --- GitHub account (global, not per-workspace) ---
   let ghHost = $state(localStorage.getItem('wf.gh.host') || 'github.com');
   let ghClientId = $state(localStorage.getItem('wf.gh.clientId') || '');
@@ -551,6 +595,8 @@
     { id: 'import', title: 'Import Postman file…', run: importFile },
     { id: 'envs', title: 'Manage environments & secrets…', run: () => openEnvManager(false) },
     { id: 'commit', title: 'Commit changes…', run: openGitPanel },
+    { id: 'pull', title: 'Pull from origin', run: doPull },
+    { id: 'push', title: 'Push to origin', run: doPush },
     { id: 'github', title: 'GitHub account…', run: () => (githubAuthOpen = true) },
     { id: 'newreq', title: 'New request', run: () => createRequest('') },
     { id: 'newfolder', title: 'New folder', run: () => createFolder('') },
@@ -631,6 +677,9 @@
       {#if gitStatus.dirty}
         <button class="icon" onclick={openGitPanel} title="Commit changes">Commit</button>
       {/if}
+      <button class="icon" onclick={doPull} disabled={gitBusy} title="Pull from origin">↓ Pull</button>
+      <button class="icon" onclick={doPush} disabled={gitBusy} title="Push to origin">↑ Push</button>
+      {#if gitNotice}<span class="git-notice">{gitNotice}</span>{/if}
     {/if}
     <button class="icon" onclick={() => (githubAuthOpen = true)} title="GitHub account">GitHub</button>
     <button class="icon" onclick={() => (paletteOpen = true)} title="Command palette (Ctrl/Cmd+K)">⌘K</button>
@@ -807,6 +856,14 @@
   }
   .git-bar .dirty {
     color: var(--accent);
+  }
+  .git-notice {
+    font-size: 11px;
+    color: var(--text-muted);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .tabbar {
     display: flex;

@@ -8,7 +8,7 @@ use crate::model::{Environment, RequestFile, UnifiedRequest, UnifiedResponse};
 use crate::postman::{self, ImportPreview, ImportResult};
 use crate::secret_resolver::{self, SecretStatus};
 use crate::variable_resolver::{resolve, ResolveOutcome};
-use crate::vcs::{self, RepoStatus};
+use crate::vcs::{self, PullOutcome, RepoStatus};
 use crate::workspace::{self, Node};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -161,6 +161,16 @@ pub fn git_diff(root: String, path: Option<String>) -> WfResult<String> {
 #[tauri::command]
 pub fn git_commit(root: String, message: String, paths: Vec<String>) -> WfResult<()> {
     vcs::commit(Path::new(&root), &message, &paths)
+}
+
+#[tauri::command]
+pub fn git_push(root: String) -> WfResult<()> {
+    vcs::push(Path::new(&root))
+}
+
+#[tauri::command]
+pub fn git_pull(root: String) -> WfResult<PullOutcome> {
+    vcs::pull(Path::new(&root))
 }
 
 #[tauri::command]

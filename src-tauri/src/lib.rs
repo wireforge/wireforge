@@ -53,6 +53,8 @@ pub fn run() {
             commands::git_status,
             commands::git_diff,
             commands::git_commit,
+            commands::git_push,
+            commands::git_pull,
             commands::github_device_start,
             commands::github_device_poll,
             commands::github_auth_status,

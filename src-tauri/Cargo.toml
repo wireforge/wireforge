@@ -22,11 +22,11 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2", "json"] }
 nanoid = "0.4"
 uuid = { version = "1", features = ["v4"] }
-# Local Git operations only for v0.5 (status, diff, commit). default-features
-# disabled drops the https/ssh transports (and OpenSSL/libssh2); libgit2 is
-# vendored and built from source with the cmake/cc already in CI. Network
-# transports for push/pull arrive in v0.6.
-git2 = { version = "0.19", default-features = false }
+# Git operations. The https feature adds the network transport for push/pull
+# (v0.6): on Windows/macOS it uses the system TLS stack, on Linux it links
+# OpenSSL (libssl-dev in CI). ssh is left off — token-over-https is the
+# collaboration path. libgit2 is vendored and built with the cmake/cc in CI.
+git2 = { version = "0.19", default-features = false, features = ["https"] }
 # Native keychain backends only (no D-Bus/secret-service): Windows Credential
 # Manager, macOS Keychain, Linux kernel keyutils. Keeps the Linux CI build free
 # of system D-Bus/OpenSSL dependencies.

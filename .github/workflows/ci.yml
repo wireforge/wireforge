@@ -36,7 +36,8 @@ jobs:
             libayatana-appindicator3-dev \
             patchelf \
             cmake \
-            nasm
+            nasm \
+            libssl-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
