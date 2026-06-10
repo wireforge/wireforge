@@ -138,6 +138,26 @@ export interface RepoStatus {
   files: GitFileEntry[];
 }
 
+// GitHub auth (mirrors the Rust github module).
+export interface DeviceStart {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  interval: number;
+  expiresIn: number;
+}
+
+export interface PollOutcome {
+  status: 'authorized' | 'pending' | 'slowDown' | 'denied';
+  login?: string;
+}
+
+export interface GithubAuthStatus {
+  authenticated: boolean;
+  host: string;
+  login?: string;
+}
+
 // Postman import (mirrors the Rust postman module).
 export interface ImportWarning {
   path: string;

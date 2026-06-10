@@ -8,6 +8,7 @@
   import ImportReview from './lib/ImportReview.svelte';
   import EnvManager from './lib/EnvManager.svelte';
   import GitPanel from './lib/GitPanel.svelte';
+  import GitHubAuth from './lib/GitHubAuth.svelte';
   import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
   import type {
     UnifiedRequest,
@@ -152,6 +153,15 @@
   function openGitPanel() {
     if (workspaceRoot && gitStatus?.isRepo) gitPanelOpen = true;
   }
+
+  // --- GitHub account (global, not per-workspace) ---
+  let ghHost = $state(localStorage.getItem('wf.gh.host') || 'github.com');
+  let ghClientId = $state(localStorage.getItem('wf.gh.clientId') || '');
+  let githubAuthOpen = $state(false);
+  $effect(() => {
+    localStorage.setItem('wf.gh.host', ghHost);
+    localStorage.setItem('wf.gh.clientId', ghClientId);
+  });
 
   async function openWorkspace() {
     try {
@@ -541,6 +551,7 @@
     { id: 'import', title: 'Import Postman file…', run: importFile },
     { id: 'envs', title: 'Manage environments & secrets…', run: () => openEnvManager(false) },
     { id: 'commit', title: 'Commit changes…', run: openGitPanel },
+    { id: 'github', title: 'GitHub account…', run: () => (githubAuthOpen = true) },
     { id: 'newreq', title: 'New request', run: () => createRequest('') },
     { id: 'newfolder', title: 'New folder', run: () => createFolder('') },
     { id: 'newtab', title: 'New tab', combo: 'Ctrl/Cmd+T', run: addTab },
@@ -621,6 +632,7 @@
         <button class="icon" onclick={openGitPanel} title="Commit changes">Commit</button>
       {/if}
     {/if}
+    <button class="icon" onclick={() => (githubAuthOpen = true)} title="GitHub account">GitHub</button>
     <button class="icon" onclick={() => (paletteOpen = true)} title="Command palette (Ctrl/Cmd+K)">⌘K</button>
     <button
       class="icon"
@@ -711,6 +723,8 @@
 </main>
 
 <CommandPalette bind:open={paletteOpen} {commands} />
+
+<GitHubAuth bind:open={githubAuthOpen} bind:host={ghHost} bind:clientId={ghClientId} />
 
 <ImportReview
   bind:open={importOpen}

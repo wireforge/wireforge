@@ -2,6 +2,7 @@
 
 use crate::environments::{self, EnvSummary};
 use crate::error::{WfError, WfResult};
+use crate::github::{self, AuthStatus, DeviceStart, PollOutcome};
 use crate::http_engine::{HttpEngine, ReqwestEngine};
 use crate::model::{Environment, RequestFile, UnifiedRequest, UnifiedResponse};
 use crate::postman::{self, ImportPreview, ImportResult};
@@ -160,4 +161,28 @@ pub fn git_diff(root: String, path: Option<String>) -> WfResult<String> {
 #[tauri::command]
 pub fn git_commit(root: String, message: String, paths: Vec<String>) -> WfResult<()> {
     vcs::commit(Path::new(&root), &message, &paths)
+}
+
+#[tauri::command]
+pub async fn github_device_start(host: String, client_id: String) -> WfResult<DeviceStart> {
+    github::device_start(&host, &client_id).await
+}
+
+#[tauri::command]
+pub async fn github_device_poll(
+    host: String,
+    client_id: String,
+    device_code: String,
+) -> WfResult<PollOutcome> {
+    github::device_poll(&host, &client_id, &device_code).await
+}
+
+#[tauri::command]
+pub async fn github_auth_status(host: String) -> WfResult<AuthStatus> {
+    github::auth_status(&host).await
+}
+
+#[tauri::command]
+pub fn github_logout(host: String) -> WfResult<()> {
+    github::logout(&host)
 }

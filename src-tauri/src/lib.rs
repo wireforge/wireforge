@@ -15,6 +15,7 @@ mod commands;
 pub mod agent_surface;
 pub mod collection_store;
 pub mod environments;
+pub mod github;
 pub mod http_engine;
 pub mod importer;
 pub mod postman;
@@ -51,7 +52,11 @@ pub fn run() {
             commands::delete_secret,
             commands::git_status,
             commands::git_diff,
-            commands::git_commit
+            commands::git_commit,
+            commands::github_device_start,
+            commands::github_device_poll,
+            commands::github_auth_status,
+            commands::github_logout
         ])
         .run(tauri::generate_context!())
         .expect("error while running wireforge application");
