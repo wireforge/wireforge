@@ -687,7 +687,8 @@ mod tests {
             .checkout_head(Some(CheckoutBuilder::new().force()))
             .unwrap();
         // Normalize line endings: Git autocrlf may rewrite LF on checkout (Windows).
-        let read = |p: std::path::PathBuf| std::fs::read_to_string(p).unwrap().replace("\r\n", "\n");
+        let read =
+            |p: std::path::PathBuf| std::fs::read_to_string(p).unwrap().replace("\r\n", "\n");
         assert_eq!(read(local_dir.join("a.txt")), "one\n");
 
         // origin advances to B.
