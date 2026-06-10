@@ -114,6 +114,30 @@ export interface ResolveOutcome {
   secrets: string[];
 }
 
+// Git status (mirrors the Rust vcs module).
+export type GitFileStatus =
+  | 'clean'
+  | 'untracked'
+  | 'modified'
+  | 'added'
+  | 'deleted'
+  | 'renamed'
+  | 'conflicted';
+
+export interface GitFileEntry {
+  path: string;
+  status: GitFileStatus;
+}
+
+export interface RepoStatus {
+  isRepo: boolean;
+  branch?: string;
+  ahead: number;
+  behind: number;
+  dirty: boolean;
+  files: GitFileEntry[];
+}
+
 // Postman import (mirrors the Rust postman module).
 export interface ImportWarning {
   path: string;

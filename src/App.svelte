@@ -18,6 +18,7 @@
     ImportResult,
     EnvSummary,
     ResolveOutcome,
+    RepoStatus,
   } from './lib/types';
 
   // --- Tabs (file-backed when opened from the collection) ---
@@ -112,12 +113,39 @@
     const root = workspaceRoot;
     if (!root) {
       tree = [];
+      gitStatus = null;
       return;
     }
     invoke<TreeNode[]>('open_workspace', { root })
       .then((t) => (tree = t))
       .catch(() => (tree = []));
+    refreshGit();
   });
+
+  // --- Git status ---
+  let gitStatus = $state<RepoStatus | null>(null);
+  const REQ_PREFIX = 'collections/main/requests/';
+
+  // Map workspace-relative file paths to tree-node (requests-root) paths.
+  const gitFiles = $derived.by(() => {
+    const m: Record<string, string> = {};
+    for (const f of gitStatus?.files ?? []) {
+      if (f.path.startsWith(REQ_PREFIX)) m[f.path.slice(REQ_PREFIX.length)] = f.status;
+    }
+    return m;
+  });
+
+  async function refreshGit() {
+    if (!workspaceRoot) {
+      gitStatus = null;
+      return;
+    }
+    try {
+      gitStatus = await invoke<RepoStatus>('git_status', { root: workspaceRoot });
+    } catch {
+      gitStatus = null;
+    }
+  }
 
   async function openWorkspace() {
     try {
@@ -184,6 +212,7 @@
     try {
       await invoke('save_request_file', { root: workspaceRoot, path: t.file.path, request: rf });
       t.pristine = JSON.stringify(t.request);
+      refreshGit();
     } catch {
       // surface save errors in a later pass
     }
@@ -217,6 +246,7 @@
     } catch {
       tree = [];
     }
+    refreshGit();
   }
 
   async function createRequest(folder = '') {
@@ -550,7 +580,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onfocus={refreshGit} />
 
 <main class="shell">
   <header class="topbar">
@@ -571,6 +601,15 @@
         {/each}
       </select>
       <button class="icon" onclick={() => openEnvManager(false)} title="Manage environments & secrets">Env…</button>
+    {/if}
+    {#if gitStatus?.isRepo}
+      <span class="git-bar mono" title="Git status">
+        <span class="branch">⎇ {gitStatus.branch ?? 'no commits'}</span>
+        {#if gitStatus.ahead}<span class="ab" title="commits ahead of upstream">↑{gitStatus.ahead}</span>{/if}
+        {#if gitStatus.behind}<span class="ab" title="commits behind upstream">↓{gitStatus.behind}</span>{/if}
+        {#if gitStatus.dirty}<span class="dirty" title="Working tree has changes">●</span>{/if}
+      </span>
+      <button class="icon" onclick={refreshGit} title="Refresh git status" aria-label="Refresh git status">⟳</button>
     {/if}
     <button class="icon" onclick={() => (paletteOpen = true)} title="Command palette (Ctrl/Cmd+K)">⌘K</button>
     <button
@@ -621,6 +660,7 @@
               onopen={openRequest}
               activePath={active?.file?.path}
               {query}
+              {gitFiles}
               onNewRequest={(p) => createRequest(p)}
               onNewFolder={(p) => createFolder(p)}
               onRename={renameNode}
@@ -722,6 +762,26 @@
   }
   .topbar .env-switch {
     max-width: 160px;
+  }
+  .git-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 0 2px;
+  }
+  .git-bar .branch {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .git-bar .ab {
+    color: var(--text);
+  }
+  .git-bar .dirty {
+    color: var(--accent);
   }
   .tabbar {
     display: flex;

@@ -8,6 +8,7 @@
     activePath,
     query = '',
     isRoot = true,
+    gitFiles = {},
     onNewRequest,
     onNewFolder,
     onRename,
@@ -20,6 +21,7 @@
     activePath?: string;
     query?: string;
     isRoot?: boolean;
+    gitFiles?: Record<string, string>;
     onNewRequest: (folderPath: string) => void;
     onNewFolder: (parentPath: string) => void;
     onRename: (path: string, name: string) => void;
@@ -27,6 +29,34 @@
     onDuplicate: (path: string) => void;
     onMove: (src: string, destFolder: string) => void;
   } = $props();
+
+  // Git status badges. Folder status is the worst of its descendants.
+  const RANK: Record<string, number> = {
+    untracked: 1,
+    modified: 2,
+    added: 3,
+    renamed: 4,
+    deleted: 5,
+    conflicted: 6,
+  };
+  const LETTER: Record<string, string> = {
+    untracked: 'U',
+    modified: 'M',
+    added: 'A',
+    renamed: 'R',
+    deleted: 'D',
+    conflicted: '!',
+  };
+
+  function folderStatus(node: TreeNode): string | undefined {
+    if (node.kind !== 'folder') return undefined;
+    let worst: string | undefined;
+    for (const c of node.children) {
+      const s = c.kind === 'folder' ? folderStatus(c) : gitFiles[c.path];
+      if (s && (!worst || RANK[s] > RANK[worst])) worst = s;
+    }
+    return worst;
+  }
 
   let expanded = $state<Set<string>>(new Set());
   let editingId = $state<string | null>(null);
@@ -91,6 +121,8 @@
 
 <ul class="tree">
   {#each nodes as n (n.id)}
+    {@const fStatus = n.kind === 'folder' ? folderStatus(n) : undefined}
+    {@const rStatus = n.kind === 'request' ? gitFiles[n.path] : undefined}
     <li>
       {#if n.kind === 'folder'}
         <div class="row" class:drop={dropTarget === n.id}>
@@ -117,6 +149,7 @@
             >
               <span class="chev">{shown(n.id) ? '▾' : '▸'}</span>
               <span class="name">{n.name}</span>
+              {#if fStatus}<span class="git g-{fStatus}" title="Contains {fStatus} changes">{LETTER[fStatus]}</span>{/if}
             </button>
             <span class="actions">
               <button class="act" title="New request" aria-label="New request" onclick={() => onNewRequest(n.path)}>＋</button>
@@ -134,6 +167,7 @@
               {activePath}
               {query}
               isRoot={false}
+              {gitFiles}
               {onNewRequest}
               {onNewFolder}
               {onRename}
@@ -165,6 +199,7 @@
             >
               <span class="m m-{n.method.toLowerCase()}">{n.method}</span>
               <span class="name">{n.name}</span>
+              {#if rStatus}<span class="git g-{rStatus}" title="{rStatus}">{LETTER[rStatus]}</span>{/if}
             </button>
             <span class="actions">
               <button class="act" title="Duplicate" aria-label="Duplicate" onclick={() => onDuplicate(n.path)}>⧉</button>
@@ -258,6 +293,26 @@
     color: var(--accent);
   }
   .m-delete {
+    color: var(--danger);
+  }
+  .git {
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding-left: 4px;
+  }
+  .g-modified,
+  .g-renamed {
+    color: var(--accent);
+  }
+  .g-added,
+  .g-untracked {
+    color: var(--success);
+  }
+  .g-deleted,
+  .g-conflicted {
     color: var(--danger);
   }
   .edit {
