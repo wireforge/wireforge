@@ -7,6 +7,7 @@ use crate::model::{Environment, RequestFile, UnifiedRequest, UnifiedResponse};
 use crate::postman::{self, ImportPreview, ImportResult};
 use crate::secret_resolver::{self, SecretStatus};
 use crate::variable_resolver::{resolve, ResolveOutcome};
+use crate::vcs::{self, RepoStatus};
 use crate::workspace::{self, Node};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -144,4 +145,9 @@ pub fn set_secret(root: String, environment: String, name: String, value: String
 #[tauri::command]
 pub fn delete_secret(root: String, environment: String, name: String) -> WfResult<()> {
     secret_resolver::delete_secret(Path::new(&root), &environment, &name)
+}
+
+#[tauri::command]
+pub fn git_status(root: String) -> WfResult<RepoStatus> {
+    vcs::repo_status(Path::new(&root))
 }
