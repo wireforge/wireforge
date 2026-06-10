@@ -11,6 +11,7 @@
   import GitHubAuth from './lib/GitHubAuth.svelte';
   import ConflictPanel from './lib/ConflictPanel.svelte';
   import CurlImport from './lib/CurlImport.svelte';
+  import Settings from './lib/Settings.svelte';
   import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
   import type {
     UnifiedRequest,
@@ -546,6 +547,16 @@
     }
   });
 
+  // --- Density + settings ---
+  let density = $state<'comfortable' | 'compact'>(
+    localStorage.getItem('wf.density') === 'compact' ? 'compact' : 'comfortable',
+  );
+  $effect(() => {
+    document.documentElement.setAttribute('data-density', density);
+    localStorage.setItem('wf.density', density);
+  });
+  let settingsOpen = $state(false);
+
   // --- Layout ---
   type Orientation = 'row' | 'column';
   const LKEY = 'wf.layout';
@@ -635,6 +646,8 @@
     { id: 'layout', title: 'Toggle request/response layout', combo: 'Ctrl/Cmd+\\', run: () => (orientation = orientation === 'row' ? 'column' : 'row') },
     { id: 'sidebar', title: 'Toggle sidebar', combo: 'Ctrl/Cmd+B', run: () => (sidebarCollapsed = !sidebarCollapsed) },
     { id: 'focusurl', title: 'Focus URL', combo: 'Ctrl/Cmd+L', run: focusUrl },
+    { id: 'settings', title: 'Settings…', run: () => (settingsOpen = true) },
+    { id: 'density', title: 'Toggle compact density', run: () => (density = density === 'compact' ? 'comfortable' : 'compact') },
     { id: 'theme-dark', title: 'Theme: Dark', run: () => (theme = 'dark') },
     { id: 'theme-light', title: 'Theme: Light', run: () => (theme = 'light') },
     { id: 'theme-system', title: 'Theme: System', run: () => (theme = 'system') },
@@ -725,11 +738,7 @@
     >
       {orientation === 'row' ? 'Side-by-side' : 'Stacked'}
     </button>
-    <select class="theme" bind:value={theme} aria-label="Theme">
-      <option value="dark">Dark</option>
-      <option value="light">Light</option>
-      <option value="system">System</option>
-    </select>
+    <button class="icon" onclick={() => (settingsOpen = true)} title="Settings" aria-label="Settings">⚙</button>
   </header>
 
   <div class="tabbar">
@@ -813,6 +822,14 @@
 
 <CurlImport bind:open={curlOpen} oncreated={addTabFromRequest} />
 
+<Settings
+  bind:open={settingsOpen}
+  bind:theme
+  bind:density
+  bind:ghHost
+  bind:ghClientId
+/>
+
 <ImportReview
   bind:open={importOpen}
   preview={importPreviewData}
@@ -844,7 +861,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 44px;
+    height: var(--topbar-h);
     padding: 0 12px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
@@ -864,7 +881,6 @@
     cursor: pointer;
     font-size: 12px;
   }
-  .topbar .theme,
   .topbar .env-switch {
     background: var(--surface-code);
     color: var(--text);
@@ -912,7 +928,7 @@
     display: flex;
     align-items: stretch;
     gap: 2px;
-    height: 34px;
+    height: var(--tabbar-h);
     padding: 0 8px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
@@ -1024,7 +1040,7 @@
   }
   .pane {
     overflow: auto;
-    padding: 12px;
+    padding: var(--pane-pad);
     min-width: 0;
     min-height: 0;
   }

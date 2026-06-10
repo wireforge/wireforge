@@ -17,7 +17,23 @@
   --font-mono:
     'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 
+  /* Density tokens (comfortable default; compact overrides below). */
+  --font-size: 13px;
+  --line: 20px;
+  --topbar-h: 44px;
+  --tabbar-h: 34px;
+  --pane-pad: 12px;
+
   color-scheme: dark;
+}
+
+/* Compact density: tighter chrome and slightly smaller text. */
+:root[data-density='compact'] {
+  --font-size: 12px;
+  --line: 18px;
+  --topbar-h: 36px;
+  --tabbar-h: 28px;
+  --pane-pad: 8px;
 }
 
 /* Soft light theme (see docs/THEME_FORMAT.md). Applied via data-theme=light. */
@@ -52,6 +68,6 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--font-size);
+  line-height: var(--line);
 }
