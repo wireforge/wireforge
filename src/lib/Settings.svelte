@@ -8,12 +8,14 @@
     density = $bindable(),
     ghHost = $bindable(),
     ghClientId = $bindable(),
+    onthemeeditor,
   }: {
     open: boolean;
     theme: ThemeMode;
     density: 'comfortable' | 'compact';
     ghHost: string;
     ghClientId: string;
+    onthemeeditor: () => void;
   } = $props();
 
   let version = $state('');
@@ -65,6 +67,10 @@
           <option value="compact">Compact</option>
         </select>
       </label>
+      <div class="row">
+        <span>Custom themes</span>
+        <button class="link" onclick={onthemeeditor}>Open theme editor…</button>
+      </div>
     </section>
 
     <section class="group">
@@ -168,5 +174,13 @@
     color: var(--text-muted);
     font-size: 11px;
     margin: 4px 0 0;
+  }
+  .link {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
   }
 </style>

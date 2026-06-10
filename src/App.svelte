@@ -12,7 +12,21 @@
   import ConflictPanel from './lib/ConflictPanel.svelte';
   import CurlImport from './lib/CurlImport.svelte';
   import Settings from './lib/Settings.svelte';
-  import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
+  import ThemeEditor from './lib/ThemeEditor.svelte';
+  import {
+    loadTheme,
+    saveTheme,
+    applyTheme,
+    resolveTheme,
+    applyCustomTheme,
+    clearCustomTheme,
+    loadCustomThemes,
+    saveCustomThemes,
+    loadActiveThemeId,
+    saveActiveThemeId,
+    type ThemeMode,
+    type Theme,
+  } from './lib/theme';
   import type {
     UnifiedRequest,
     UnifiedResponse,
@@ -534,14 +548,42 @@
     }
   }
 
-  // --- Theme ---
+  // --- Theme (built-in modes + custom themes) ---
   let theme = $state<ThemeMode>(loadTheme());
+  let customThemes = $state<Theme[]>(loadCustomThemes());
+  let activeThemeId = $state(loadActiveThemeId());
+  let themeEditorOpen = $state(false);
+
+  const baseMode = $derived(resolveTheme(theme));
+
+  function reapplyTheme() {
+    const c = customThemes.find((t) => t.id === activeThemeId);
+    if (c) applyCustomTheme(c);
+    else {
+      clearCustomTheme();
+      applyTheme(theme);
+    }
+  }
+
   $effect(() => {
-    applyTheme(theme);
+    saveCustomThemes(customThemes);
+  });
+
+  $effect(() => {
     saveTheme(theme);
+    saveActiveThemeId(activeThemeId);
+    const custom = customThemes.find((t) => t.id === activeThemeId);
+    if (custom) {
+      applyCustomTheme(custom);
+      return;
+    }
+    clearCustomTheme();
+    applyTheme(theme);
     if (theme === 'system') {
       const mq = window.matchMedia('(prefers-color-scheme: light)');
-      const onChange = () => applyTheme('system');
+      const onChange = () => {
+        if (!activeThemeId) applyTheme('system');
+      };
       mq.addEventListener('change', onChange);
       return () => mq.removeEventListener('change', onChange);
     }
@@ -647,6 +689,7 @@
     { id: 'sidebar', title: 'Toggle sidebar', combo: 'Ctrl/Cmd+B', run: () => (sidebarCollapsed = !sidebarCollapsed) },
     { id: 'focusurl', title: 'Focus URL', combo: 'Ctrl/Cmd+L', run: focusUrl },
     { id: 'settings', title: 'Settings…', run: () => (settingsOpen = true) },
+    { id: 'themeeditor', title: 'Theme editor…', run: () => (themeEditorOpen = true) },
     { id: 'density', title: 'Toggle compact density', run: () => (density = density === 'compact' ? 'comfortable' : 'compact') },
     { id: 'theme-dark', title: 'Theme: Dark', run: () => (theme = 'dark') },
     { id: 'theme-light', title: 'Theme: Light', run: () => (theme = 'light') },
@@ -828,6 +871,18 @@
   bind:density
   bind:ghHost
   bind:ghClientId
+  onthemeeditor={() => {
+    settingsOpen = false;
+    themeEditorOpen = true;
+  }}
+/>
+
+<ThemeEditor
+  bind:open={themeEditorOpen}
+  bind:customThemes
+  bind:activeThemeId
+  {baseMode}
+  reapply={reapplyTheme}
 />
 
 <ImportReview
