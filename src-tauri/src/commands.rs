@@ -5,6 +5,7 @@ use crate::error::{WfError, WfResult};
 use crate::http_engine::{HttpEngine, ReqwestEngine};
 use crate::model::{Environment, RequestFile, UnifiedRequest, UnifiedResponse};
 use crate::postman::{self, ImportPreview, ImportResult};
+use crate::secret_resolver::{self, SecretStatus};
 use crate::variable_resolver::{resolve, ResolveOutcome};
 use crate::workspace::{self, Node};
 use std::collections::BTreeMap;
@@ -24,9 +25,24 @@ pub fn app_info() -> String {
     format!("wireforge {}", env!("CARGO_PKG_VERSION"))
 }
 
+/// Send a request. When `root` is provided, all `{{variables}}` are resolved
+/// against the workspace (and optional active `environment`) on the backend —
+/// secrets included — and the send is rejected before going out if a variable
+/// is unresolved or a required secret is missing. Without `root`, the request
+/// is sent as-is.
 #[tauri::command]
-pub async fn send_request(request: UnifiedRequest) -> WfResult<UnifiedResponse> {
-    ReqwestEngine::new().send(request).await
+pub async fn send_request(
+    request: UnifiedRequest,
+    root: Option<String>,
+    environment: Option<String>,
+) -> WfResult<UnifiedResponse> {
+    let resolved = match &root {
+        Some(r) => {
+            secret_resolver::resolve_request(Path::new(r), environment.as_deref(), &request)?
+        }
+        None => request,
+    };
+    ReqwestEngine::new().send(resolved).await
 }
 
 #[tauri::command]
@@ -113,4 +129,19 @@ pub fn resolve_preview(
 ) -> WfResult<ResolveOutcome> {
     let (scopes, secrets) = environments::build_scopes(Path::new(&root), environment.as_deref())?;
     resolve(&input, &scopes, &secrets, &BTreeMap::new(), true)
+}
+
+#[tauri::command]
+pub fn secret_status(root: String, environment: Option<String>) -> WfResult<Vec<SecretStatus>> {
+    secret_resolver::secret_status(Path::new(&root), environment.as_deref())
+}
+
+#[tauri::command]
+pub fn set_secret(root: String, environment: String, name: String, value: String) -> WfResult<()> {
+    secret_resolver::set_secret(Path::new(&root), &environment, &name, &value)
+}
+
+#[tauri::command]
+pub fn delete_secret(root: String, environment: String, name: String) -> WfResult<()> {
+    secret_resolver::delete_secret(Path::new(&root), &environment, &name)
 }

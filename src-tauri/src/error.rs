@@ -64,6 +64,28 @@ impl WfError {
             details: None,
         }
     }
+
+    /// Attach a UI affordance hint. `kind` is a closed identifier (e.g.
+    /// `openSettings`, `setSecret`); the button label is derived from it.
+    pub fn with_suggested_action(mut self, kind: &str) -> Self {
+        let text = match kind {
+            "openSettings" => "Open settings",
+            "setSecret" => "Set secrets",
+            "retry" => "Retry",
+            other => other,
+        };
+        self.suggested_action = Some(SuggestedAction {
+            kind: kind.to_string(),
+            text: text.to_string(),
+        });
+        self
+    }
+
+    /// Attach structured machine-readable detail (never secret values).
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
+    }
 }
 
 impl std::fmt::Display for WfError {

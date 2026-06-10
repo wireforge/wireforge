@@ -45,7 +45,10 @@ pub fn run() {
             commands::create_environment,
             commands::load_environment,
             commands::save_environment,
-            commands::resolve_preview
+            commands::resolve_preview,
+            commands::secret_status,
+            commands::set_secret,
+            commands::delete_secret
         ])
         .run(tauri::generate_context!())
         .expect("error while running wireforge application");

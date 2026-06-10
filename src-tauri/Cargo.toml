@@ -22,6 +22,14 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "http2"] }
 nanoid = "0.4"
 uuid = { version = "1", features = ["v4"] }
+# Native keychain backends only (no D-Bus/secret-service): Windows Credential
+# Manager, macOS Keychain, Linux kernel keyutils. Keeps the Linux CI build free
+# of system D-Bus/OpenSSL dependencies.
+keyring = { version = "3", default-features = false, features = [
+    "apple-native",
+    "windows-native",
+    "linux-native",
+] }
 tauri-plugin-dialog = "2"
 
 # Heavier capability crates are added in the phases that implement them:

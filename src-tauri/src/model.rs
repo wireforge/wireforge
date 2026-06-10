@@ -132,6 +132,10 @@ pub struct UnifiedResponse {
 pub struct Workspace {
     pub format: String,
     pub version: u32,
+    /// Stable workspace identity used to namespace keychain entries. Optional in
+    /// older files; backfilled on first secret operation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_collection_id: Option<String>,

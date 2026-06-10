@@ -131,6 +131,7 @@ fn ensure_collection(workspace: &Path) -> WfResult<()> {
             &Workspace {
                 format: "wireforge.workspace".to_string(),
                 version: 1,
+                id: Some(new_id("ws")),
                 name: "Workspace".to_string(),
                 default_collection_id: None,
                 default_environment_id: None,
@@ -139,6 +140,21 @@ fn ensure_collection(workspace: &Path) -> WfResult<()> {
         )?;
     }
     Ok(())
+}
+
+/// Return the workspace's stable id, generating and persisting one if the
+/// workspace file lacks it. Used to namespace keychain entries.
+pub fn ensure_workspace_id(workspace: &Path) -> WfResult<String> {
+    ensure_collection(workspace)?;
+    let path = workspace.join("wireforge.json");
+    let mut ws: Workspace = read_json(&path)?;
+    if let Some(id) = &ws.id {
+        return Ok(id.clone());
+    }
+    let id = new_id("ws");
+    ws.id = Some(id.clone());
+    write_json(&path, &ws)?;
+    Ok(id)
 }
 
 /// Read the child-order array for a folder (root order lives in collection.json).
