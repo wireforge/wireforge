@@ -158,6 +158,12 @@ export interface GithubAuthStatus {
   login?: string;
 }
 
+export interface ConflictSides {
+  base?: string;
+  ours?: string;
+  theirs?: string;
+}
+
 // Postman import (mirrors the Rust postman module).
 export interface ImportWarning {
   path: string;

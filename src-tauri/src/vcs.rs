@@ -269,15 +269,31 @@ pub fn commit(workspace: &Path, message: &str, paths: &[String]) -> WfResult<()>
         ))
     })?;
 
-    let parents = repo
+    // Parents: HEAD, plus MERGE_HEAD when finishing a merge (so the resolution
+    // becomes a proper merge commit).
+    let mut parents: Vec<git2::Commit> = vec![];
+    if let Some(c) = repo
         .head()
         .ok()
         .and_then(|h| h.target())
-        .and_then(|oid| repo.find_commit(oid).ok());
+        .and_then(|oid| repo.find_commit(oid).ok())
+    {
+        parents.push(c);
+    }
+    if let Ok(merge_head) = repo.find_reference("MERGE_HEAD") {
+        if let Some(c) = merge_head
+            .target()
+            .and_then(|oid| repo.find_commit(oid).ok())
+        {
+            parents.push(c);
+        }
+    }
     let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
 
     repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)
         .map_err(git_err)?;
+    // Clear any in-progress merge state now that it is committed.
+    let _ = repo.cleanup_state();
     Ok(())
 }
 
@@ -462,6 +478,140 @@ pub fn push(workspace: &Path) -> WfResult<()> {
                 .with_suggested_action("pullThenRetry"),
         ));
     }
+    Ok(())
+}
+
+/// The three sides of a conflicted file, read from the index conflict stages.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictSides {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ours: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theirs: Option<String>,
+}
+
+fn blob_text(repo: &Repository, oid: git2::Oid) -> Option<String> {
+    repo.find_blob(oid)
+        .ok()
+        .map(|b| String::from_utf8_lossy(b.content()).to_string())
+}
+
+fn entry_path_matches(entry: &Option<git2::IndexEntry>, rel: &str) -> bool {
+    entry
+        .as_ref()
+        .and_then(|e| std::str::from_utf8(&e.path).ok())
+        .map(|p| p == rel)
+        .unwrap_or(false)
+}
+
+/// Read the base/ours/theirs contents of a conflicted file for side-by-side
+/// display.
+pub fn conflict_sides(workspace: &Path, path: &str) -> WfResult<ConflictSides> {
+    let repo = Repository::discover(workspace).map_err(|_| not_a_repo())?;
+    let prefix = workspace_prefix(&repo, workspace);
+    let rel = repo_path(&prefix, path);
+    let index = repo.index().map_err(git_err)?;
+
+    let mut sides = ConflictSides::default();
+    for c in index.conflicts().map_err(git_err)? {
+        let c = c.map_err(git_err)?;
+        if entry_path_matches(&c.ancestor, &rel)
+            || entry_path_matches(&c.our, &rel)
+            || entry_path_matches(&c.their, &rel)
+        {
+            sides.base = c.ancestor.and_then(|e| blob_text(&repo, e.id));
+            sides.ours = c.our.and_then(|e| blob_text(&repo, e.id));
+            sides.theirs = c.their.and_then(|e| blob_text(&repo, e.id));
+            break;
+        }
+    }
+    Ok(sides)
+}
+
+fn conflict_oids(
+    index: &git2::Index,
+    rel: &str,
+) -> WfResult<(Option<git2::Oid>, Option<git2::Oid>)> {
+    for c in index.conflicts().map_err(git_err)? {
+        let c = c.map_err(git_err)?;
+        if entry_path_matches(&c.ancestor, rel)
+            || entry_path_matches(&c.our, rel)
+            || entry_path_matches(&c.their, rel)
+        {
+            return Ok((c.our.map(|e| e.id), c.their.map(|e| e.id)));
+        }
+    }
+    Ok((None, None))
+}
+
+/// Resolve a conflicted file by keeping one side ("mine" = ours, "theirs"),
+/// writing the resolved content to the file, preserving the losing side as a
+/// visible `<path>.<side>.conflict` backup, and staging the resolution.
+pub fn resolve_conflict(workspace: &Path, path: &str, choice: &str) -> WfResult<()> {
+    let repo = Repository::discover(workspace).map_err(|_| not_a_repo())?;
+    let prefix = workspace_prefix(&repo, workspace);
+    let rel = repo_path(&prefix, path);
+    let workdir = repo.workdir().ok_or_else(not_a_repo)?.to_path_buf();
+
+    let mut index = repo.index().map_err(git_err)?;
+    let (ours, theirs) = conflict_oids(&index, &rel)?;
+
+    let (chosen, losing, losing_label) = if choice == "theirs" {
+        (theirs, ours, "ours")
+    } else {
+        (ours, theirs, "theirs")
+    };
+
+    let target = workdir.join(&rel);
+    match chosen {
+        Some(oid) => {
+            let blob = repo.find_blob(oid).map_err(git_err)?;
+            std::fs::write(&target, blob.content())
+                .map_err(|e| WfError::new("WF_STORE_WRITE_FAILED", e.to_string()))?;
+        }
+        None => {
+            // The chosen side deleted the file.
+            let _ = std::fs::remove_file(&target);
+        }
+    }
+
+    if let Some(oid) = losing {
+        if let Ok(blob) = repo.find_blob(oid) {
+            let backup = workdir.join(format!("{rel}.{losing_label}.conflict"));
+            std::fs::write(&backup, blob.content())
+                .map_err(|e| WfError::new("WF_STORE_WRITE_FAILED", e.to_string()))?;
+        }
+    }
+
+    // Adding (or removing) the path replaces the conflict stages with a single
+    // stage-0 entry, marking the conflict resolved.
+    if target.exists() {
+        index.add_path(Path::new(&rel)).map_err(git_err)?;
+    } else {
+        let _ = index.remove_path(Path::new(&rel));
+    }
+    index.write().map_err(git_err)?;
+    Ok(())
+}
+
+/// Mark a conflict resolved using the current working-tree content (for files
+/// edited by hand or in an external editor).
+pub fn mark_resolved(workspace: &Path, path: &str) -> WfResult<()> {
+    let repo = Repository::discover(workspace).map_err(|_| not_a_repo())?;
+    let prefix = workspace_prefix(&repo, workspace);
+    let rel = repo_path(&prefix, path);
+    let workdir = repo.workdir().ok_or_else(not_a_repo)?.to_path_buf();
+
+    let mut index = repo.index().map_err(git_err)?;
+    if workdir.join(&rel).exists() {
+        index.add_path(Path::new(&rel)).map_err(git_err)?;
+    } else {
+        let _ = index.remove_path(Path::new(&rel));
+    }
+    index.write().map_err(git_err)?;
     Ok(())
 }
 
@@ -711,5 +861,64 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&origin_dir);
         let _ = std::fs::remove_dir_all(&local_dir);
+    }
+
+    #[test]
+    fn resolve_conflict_keeps_a_side_and_backs_up_the_other() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let repo = Repository::init(&dir).unwrap();
+        {
+            let mut cfg = repo.config().unwrap();
+            cfg.set_str("user.name", "t").unwrap();
+            cfg.set_str("user.email", "t@t").unwrap();
+        }
+        let sig = || Signature::now("t", "t@t").unwrap();
+        let commit_file = |contents: &str, msg: &str, parents: &[&git2::Commit]| {
+            std::fs::write(dir.join("f.txt"), contents).unwrap();
+            let mut idx = repo.index().unwrap();
+            idx.add_path(Path::new("f.txt")).unwrap();
+            idx.write().unwrap();
+            let tree = repo.find_tree(idx.write_tree().unwrap()).unwrap();
+            repo.commit(Some("HEAD"), &sig(), &sig(), msg, &tree, parents)
+                .unwrap()
+        };
+
+        let a = repo.find_commit(commit_file("base\n", "A", &[])).unwrap();
+        commit_file("ours\n", "ours", &[&a]); // master diverges
+
+        repo.branch("theirs", &a, true).unwrap();
+        repo.set_head("refs/heads/theirs").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        let t = commit_file("theirs\n", "theirs", &[&a]);
+
+        repo.set_head("refs/heads/master").unwrap();
+        repo.checkout_head(Some(CheckoutBuilder::new().force()))
+            .unwrap();
+        let their_ann = repo.find_annotated_commit(t).unwrap();
+        repo.merge(&[&their_ann], None, None).unwrap();
+        assert!(repo.index().unwrap().has_conflicts());
+
+        let sides = conflict_sides(&dir, "f.txt").unwrap();
+        assert_eq!(sides.ours.as_deref().map(str::trim), Some("ours"));
+        assert_eq!(sides.theirs.as_deref().map(str::trim), Some("theirs"));
+
+        resolve_conflict(&dir, "f.txt", "mine").unwrap();
+        // resolve_conflict wrote the index on disk via its own handle; reload.
+        let mut reloaded = repo.index().unwrap();
+        reloaded.read(true).unwrap();
+        assert!(!reloaded.has_conflicts());
+        let read =
+            |p: std::path::PathBuf| std::fs::read_to_string(p).unwrap().replace("\r\n", "\n");
+        assert_eq!(read(dir.join("f.txt")), "ours\n");
+        assert_eq!(read(dir.join("f.txt.theirs.conflict")), "theirs\n");
+
+        commit(&dir, "merge theirs", &["f.txt".to_string()]).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.parent_count(), 2, "merge commit has two parents");
+        assert_eq!(repo.state(), git2::RepositoryState::Clean);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -9,6 +9,7 @@
   import EnvManager from './lib/EnvManager.svelte';
   import GitPanel from './lib/GitPanel.svelte';
   import GitHubAuth from './lib/GitHubAuth.svelte';
+  import ConflictPanel from './lib/ConflictPanel.svelte';
   import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
   import type {
     UnifiedRequest,
@@ -154,6 +155,11 @@
     if (workspaceRoot && gitStatus?.isRepo) gitPanelOpen = true;
   }
 
+  let conflictPanelOpen = $state(false);
+  const conflictCount = $derived(
+    (gitStatus?.files ?? []).filter((f) => f.status === 'conflicted').length,
+  );
+
   let gitBusy = $state(false);
   let gitNotice = $state<string | null>(null);
   function setNotice(text: string) {
@@ -177,8 +183,10 @@
       setNotice(label);
       await refreshTree();
     } catch (e) {
-      setNotice(errMsg(e));
-      refreshGit();
+      const err = e as WfError;
+      setNotice(err?.message ?? String(e));
+      await refreshGit();
+      if (err?.code === 'WF_GIT_MERGE_CONFLICT') conflictPanelOpen = true;
     } finally {
       gitBusy = false;
     }
@@ -597,6 +605,7 @@
     { id: 'commit', title: 'Commit changes…', run: openGitPanel },
     { id: 'pull', title: 'Pull from origin', run: doPull },
     { id: 'push', title: 'Push to origin', run: doPush },
+    { id: 'resolve', title: 'Resolve conflicts…', run: () => (conflictPanelOpen = true) },
     { id: 'github', title: 'GitHub account…', run: () => (githubAuthOpen = true) },
     { id: 'newreq', title: 'New request', run: () => createRequest('') },
     { id: 'newfolder', title: 'New folder', run: () => createFolder('') },
@@ -679,6 +688,11 @@
       {/if}
       <button class="icon" onclick={doPull} disabled={gitBusy} title="Pull from origin">↓ Pull</button>
       <button class="icon" onclick={doPush} disabled={gitBusy} title="Push to origin">↑ Push</button>
+      {#if conflictCount > 0}
+        <button class="icon conflict" onclick={() => (conflictPanelOpen = true)} title="Resolve conflicts">
+          Resolve {conflictCount}
+        </button>
+      {/if}
       {#if gitNotice}<span class="git-notice">{gitNotice}</span>{/if}
     {/if}
     <button class="icon" onclick={() => (githubAuthOpen = true)} title="GitHub account">GitHub</button>
@@ -793,6 +807,7 @@
     onchanged={refreshEnvironments}
   />
   <GitPanel bind:open={gitPanelOpen} root={workspaceRoot} status={gitStatus} oncommitted={refreshGit} />
+  <ConflictPanel bind:open={conflictPanelOpen} root={workspaceRoot} status={gitStatus} onchanged={refreshGit} />
 {/if}
 
 <style>
@@ -864,6 +879,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .topbar .icon.conflict {
+    color: var(--danger);
+    border-color: var(--danger);
   }
   .tabbar {
     display: flex;

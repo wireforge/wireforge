@@ -8,7 +8,7 @@ use crate::model::{Environment, RequestFile, UnifiedRequest, UnifiedResponse};
 use crate::postman::{self, ImportPreview, ImportResult};
 use crate::secret_resolver::{self, SecretStatus};
 use crate::variable_resolver::{resolve, ResolveOutcome};
-use crate::vcs::{self, PullOutcome, RepoStatus};
+use crate::vcs::{self, ConflictSides, PullOutcome, RepoStatus};
 use crate::workspace::{self, Node};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -171,6 +171,21 @@ pub fn git_push(root: String) -> WfResult<()> {
 #[tauri::command]
 pub fn git_pull(root: String) -> WfResult<PullOutcome> {
     vcs::pull(Path::new(&root))
+}
+
+#[tauri::command]
+pub fn git_conflict_sides(root: String, path: String) -> WfResult<ConflictSides> {
+    vcs::conflict_sides(Path::new(&root), &path)
+}
+
+#[tauri::command]
+pub fn git_resolve_conflict(root: String, path: String, choice: String) -> WfResult<()> {
+    vcs::resolve_conflict(Path::new(&root), &path, &choice)
+}
+
+#[tauri::command]
+pub fn git_mark_resolved(root: String, path: String) -> WfResult<()> {
+    vcs::mark_resolved(Path::new(&root), &path)
 }
 
 #[tauri::command]
