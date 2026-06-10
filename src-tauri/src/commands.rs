@@ -151,3 +151,13 @@ pub fn delete_secret(root: String, environment: String, name: String) -> WfResul
 pub fn git_status(root: String) -> WfResult<RepoStatus> {
     vcs::repo_status(Path::new(&root))
 }
+
+#[tauri::command]
+pub fn git_diff(root: String, path: Option<String>) -> WfResult<String> {
+    vcs::diff(Path::new(&root), path.as_deref())
+}
+
+#[tauri::command]
+pub fn git_commit(root: String, message: String, paths: Vec<String>) -> WfResult<()> {
+    vcs::commit(Path::new(&root), &message, &paths)
+}

@@ -7,6 +7,7 @@
   import Sidebar from './lib/Sidebar.svelte';
   import ImportReview from './lib/ImportReview.svelte';
   import EnvManager from './lib/EnvManager.svelte';
+  import GitPanel from './lib/GitPanel.svelte';
   import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
   import type {
     UnifiedRequest,
@@ -145,6 +146,11 @@
     } catch {
       gitStatus = null;
     }
+  }
+
+  let gitPanelOpen = $state(false);
+  function openGitPanel() {
+    if (workspaceRoot && gitStatus?.isRepo) gitPanelOpen = true;
   }
 
   async function openWorkspace() {
@@ -534,6 +540,7 @@
     { id: 'open', title: 'Open workspace folder…', run: openWorkspace },
     { id: 'import', title: 'Import Postman file…', run: importFile },
     { id: 'envs', title: 'Manage environments & secrets…', run: () => openEnvManager(false) },
+    { id: 'commit', title: 'Commit changes…', run: openGitPanel },
     { id: 'newreq', title: 'New request', run: () => createRequest('') },
     { id: 'newfolder', title: 'New folder', run: () => createFolder('') },
     { id: 'newtab', title: 'New tab', combo: 'Ctrl/Cmd+T', run: addTab },
@@ -610,6 +617,9 @@
         {#if gitStatus.dirty}<span class="dirty" title="Working tree has changes">●</span>{/if}
       </span>
       <button class="icon" onclick={refreshGit} title="Refresh git status" aria-label="Refresh git status">⟳</button>
+      {#if gitStatus.dirty}
+        <button class="icon" onclick={openGitPanel} title="Commit changes">Commit</button>
+      {/if}
     {/if}
     <button class="icon" onclick={() => (paletteOpen = true)} title="Command palette (Ctrl/Cmd+K)">⌘K</button>
     <button
@@ -719,6 +729,7 @@
     focusSecrets={envManagerFocusSecrets}
     onchanged={refreshEnvironments}
   />
+  <GitPanel bind:open={gitPanelOpen} root={workspaceRoot} status={gitStatus} oncommitted={refreshGit} />
 {/if}
 
 <style>

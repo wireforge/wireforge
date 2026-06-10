@@ -6,7 +6,7 @@
 //! state). Diff and commit land in later v0.5 chunks; push/pull in v0.6.
 
 use crate::error::{WfError, WfResult};
-use git2::{Repository, Status, StatusOptions};
+use git2::{DiffFormat, DiffOptions, Repository, Status, StatusOptions};
 use serde::Serialize;
 use std::path::Path;
 
@@ -186,6 +186,98 @@ pub fn repo_status(workspace: &Path) -> WfResult<RepoStatus> {
     })
 }
 
+fn not_a_repo() -> Box<WfError> {
+    Box::new(WfError::new(
+        "WF_GIT_NOT_A_REPO",
+        "the workspace is not inside a Git repository",
+    ))
+}
+
+/// Map a workspace-relative path to a repository-relative one.
+fn repo_path(prefix: &str, ws_relative: &str) -> String {
+    if prefix.is_empty() {
+        ws_relative.to_string()
+    } else {
+        format!("{prefix}/{ws_relative}")
+    }
+}
+
+/// Unified diff of the working tree (index + workdir) against HEAD. `path` is a
+/// workspace-relative path to scope the diff; `None` diffs everything. Untracked
+/// files appear as fully added. Returns empty when not in a repository.
+pub fn diff(workspace: &Path, path: Option<&str>) -> WfResult<String> {
+    let repo = match Repository::discover(workspace) {
+        Ok(r) => r,
+        Err(_) => return Ok(String::new()),
+    };
+    let prefix = workspace_prefix(&repo, workspace);
+
+    let mut opts = DiffOptions::new();
+    opts.include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .show_untracked_content(true);
+    if let Some(p) = path {
+        opts.pathspec(repo_path(&prefix, p));
+    }
+
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+    let diff = repo
+        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
+        .map_err(git_err)?;
+
+    let mut out = String::new();
+    diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
+        if matches!(line.origin(), '+' | '-' | ' ') {
+            out.push(line.origin());
+        }
+        out.push_str(std::str::from_utf8(line.content()).unwrap_or(""));
+        true
+    })
+    .map_err(git_err)?;
+    Ok(out)
+}
+
+/// Stage the given workspace-relative paths (added/modified are staged, missing
+/// ones are removed) and create a commit. A missing Git identity is reported so
+/// the user can configure it.
+pub fn commit(workspace: &Path, message: &str, paths: &[String]) -> WfResult<()> {
+    let repo = Repository::discover(workspace).map_err(|_| not_a_repo())?;
+    let prefix = workspace_prefix(&repo, workspace);
+    let workdir = repo.workdir().ok_or_else(not_a_repo)?.to_path_buf();
+
+    let mut index = repo.index().map_err(git_err)?;
+    for p in paths {
+        let rel = repo_path(&prefix, p);
+        if workdir.join(&rel).exists() {
+            index.add_path(Path::new(&rel)).map_err(git_err)?;
+        } else {
+            index.remove_path(Path::new(&rel)).map_err(git_err)?;
+        }
+    }
+    index.write().map_err(git_err)?;
+    let tree = repo
+        .find_tree(index.write_tree().map_err(git_err)?)
+        .map_err(git_err)?;
+
+    let sig = repo.signature().map_err(|_| {
+        Box::new(WfError::new(
+            "WF_GIT_OPERATION_FAILED",
+            "configure git user.name and user.email to commit",
+        ))
+    })?;
+
+    let parents = repo
+        .head()
+        .ok()
+        .and_then(|h| h.target())
+        .and_then(|oid| repo.find_commit(oid).ok());
+    let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
+
+    repo.commit(Some("HEAD"), &sig, &sig, message, &tree, &parent_refs)
+        .map_err(git_err)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +352,71 @@ mod tests {
         assert_eq!(st.files[0].path, "collections/c.txt");
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn init_repo_with_commit(dir: &Path) -> Repository {
+        std::fs::create_dir_all(dir).unwrap();
+        let repo = Repository::init(dir).unwrap();
+        {
+            let mut cfg = repo.config().unwrap();
+            cfg.set_str("user.name", "t").unwrap();
+            cfg.set_str("user.email", "t@t").unwrap();
+        }
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index.add_path(Path::new("a.txt")).unwrap();
+            index.write().unwrap();
+            let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+            let sig = Signature::now("t", "t@t").unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+                .unwrap();
+        }
+        repo
+    }
+
+    #[test]
+    fn diff_shows_modifications() {
+        let dir = temp_dir();
+        let _repo = init_repo_with_commit(&dir);
+        std::fs::write(dir.join("a.txt"), "two\n").unwrap();
+
+        let d = diff(&dir, None).unwrap();
+        assert!(d.contains("a.txt"), "diff names the file: {d}");
+        assert!(d.contains("-one"), "diff has the removed line: {d}");
+        assert!(d.contains("+two"), "diff has the added line: {d}");
+
+        // Scoping to an unrelated path yields nothing.
+        assert!(diff(&dir, Some("nope.txt")).unwrap().is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn commit_stages_and_writes_history() {
+        let dir = temp_dir();
+        let repo = init_repo_with_commit(&dir);
+
+        std::fs::write(dir.join("b.txt"), "hi\n").unwrap();
+        commit(&dir, "add b", &["b.txt".to_string()]).unwrap();
+
+        let st = repo_status(&dir).unwrap();
+        assert!(
+            !st.files.iter().any(|f| f.path == "b.txt"),
+            "b.txt should be committed: {:?}",
+            st.files
+        );
+
+        let msg = repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .message()
+            .unwrap()
+            .to_string();
+        assert_eq!(msg, "add b");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
