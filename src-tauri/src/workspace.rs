@@ -31,7 +31,7 @@ pub enum Node {
     },
 }
 
-fn collection_dir(workspace: &Path) -> PathBuf {
+pub(crate) fn collection_dir(workspace: &Path) -> PathBuf {
     workspace.join("collections").join("main")
 }
 
@@ -81,7 +81,7 @@ pub(crate) fn unique_path(dir: &Path, base: &str, ext: &str) -> PathBuf {
     candidate
 }
 
-fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> WfResult<T> {
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> WfResult<T> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| WfError::new("WF_STORE_FILE_NOT_FOUND", e.to_string()))?;
     let value = serde_json::from_str(&text)
@@ -134,6 +134,7 @@ fn ensure_collection(workspace: &Path) -> WfResult<()> {
                 name: "Workspace".to_string(),
                 default_collection_id: None,
                 default_environment_id: None,
+                variables: Default::default(),
             },
         )?;
     }

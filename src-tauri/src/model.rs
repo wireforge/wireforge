@@ -137,6 +137,9 @@ pub struct Workspace {
     pub default_collection_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_environment_id: Option<String>,
+    /// Global-scope variables (lowest precedence in resolution).
+    #[serde(default)]
+    pub variables: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,4 +205,46 @@ pub struct Environment {
     pub name: String,
     #[serde(default)]
     pub values: BTreeMap<String, EnvValue>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum SecretScope {
+    #[default]
+    Workspace,
+    Environment,
+}
+
+/// One entry in the secrets manifest. Declares that a variable is secret-backed;
+/// it never carries the value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretDecl {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default = "default_true")]
+    pub required: bool,
+    #[serde(default)]
+    pub scope: SecretScope,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub environments: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc_url: Option<String>,
+}
+
+/// `environments/secrets.manifest.json`: the classification authority for which
+/// variables are secret-backed. Contains no values.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretsManifest {
+    pub format: String,
+    pub version: u32,
+    #[serde(default)]
+    pub secrets: BTreeMap<String, SecretDecl>,
 }

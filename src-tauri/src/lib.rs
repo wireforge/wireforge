@@ -14,6 +14,7 @@ mod commands;
 
 pub mod agent_surface;
 pub mod collection_store;
+pub mod environments;
 pub mod http_engine;
 pub mod importer;
 pub mod postman;
@@ -39,7 +40,12 @@ pub fn run() {
             commands::load_request_file,
             commands::save_request_file,
             commands::import_preview,
-            commands::import_apply
+            commands::import_apply,
+            commands::list_environments,
+            commands::create_environment,
+            commands::load_environment,
+            commands::save_environment,
+            commands::resolve_preview
         ])
         .run(tauri::generate_context!())
         .expect("error while running wireforge application");
