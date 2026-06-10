@@ -6,6 +6,7 @@
   import CommandPalette from './lib/CommandPalette.svelte';
   import Sidebar from './lib/Sidebar.svelte';
   import ImportReview from './lib/ImportReview.svelte';
+  import EnvManager from './lib/EnvManager.svelte';
   import { loadTheme, saveTheme, applyTheme, type ThemeMode } from './lib/theme';
   import type {
     UnifiedRequest,
@@ -15,6 +16,8 @@
     WfError,
     ImportPreview,
     ImportResult,
+    EnvSummary,
+    ResolveOutcome,
   } from './lib/types';
 
   // --- Tabs (file-backed when opened from the collection) ---
@@ -81,10 +84,17 @@
     t.sending = true;
     t.error = null;
     try {
-      t.response = await invoke<UnifiedResponse>('send_request', { request: t.request });
+      t.response = await invoke<UnifiedResponse>('send_request', {
+        request: t.request,
+        root: workspaceRoot ?? undefined,
+        environment: activeEnv ?? undefined,
+      });
     } catch (e) {
-      t.error = e as WfError;
+      const err = e as WfError;
+      t.error = err;
       t.response = null;
+      // Pre-send validation failures route the user to where they can fix it.
+      if (err?.code === 'WF_SECRET_MISSING') openEnvManager(true);
     } finally {
       t.sending = false;
     }
@@ -339,6 +349,72 @@
     }
   }
 
+  // --- Environments & secrets ---
+  let environments = $state<EnvSummary[]>([]);
+  let activeEnv = $state<string | null>(null);
+  let envManagerOpen = $state(false);
+  let envManagerFocusSecrets = $state(false);
+
+  const envKey = (root: string) => `wf.env:${root}`;
+
+  // Load environments and restore the active one whenever the workspace changes.
+  $effect(() => {
+    const root = workspaceRoot;
+    if (!root) {
+      environments = [];
+      activeEnv = null;
+      return;
+    }
+    const saved = localStorage.getItem(envKey(root));
+    invoke<EnvSummary[]>('list_environments', { root })
+      .then((list) => {
+        environments = list;
+        activeEnv = saved && list.some((e) => e.slug === saved) ? saved : null;
+      })
+      .catch(() => {
+        environments = [];
+        activeEnv = null;
+      });
+  });
+
+  function setActiveEnv(slug: string | null) {
+    activeEnv = slug;
+    if (workspaceRoot) {
+      if (slug) localStorage.setItem(envKey(workspaceRoot), slug);
+      else localStorage.removeItem(envKey(workspaceRoot));
+    }
+  }
+
+  async function refreshEnvironments() {
+    if (!workspaceRoot) return;
+    try {
+      environments = await invoke<EnvSummary[]>('list_environments', { root: workspaceRoot });
+      if (activeEnv && !environments.some((e) => e.slug === activeEnv)) setActiveEnv(null);
+    } catch {
+      // ignore
+    }
+  }
+
+  function openEnvManager(focusSecrets = false) {
+    if (!workspaceRoot) return;
+    envManagerFocusSecrets = focusSecrets;
+    envManagerOpen = true;
+  }
+
+  // Live preview callback for the URL field (secrets always redacted by the backend).
+  async function previewInput(input: string): Promise<ResolveOutcome | null> {
+    if (!workspaceRoot || !input.includes('{{')) return null;
+    try {
+      return await invoke<ResolveOutcome>('resolve_preview', {
+        root: workspaceRoot,
+        environment: activeEnv ?? undefined,
+        input,
+      });
+    } catch {
+      return null;
+    }
+  }
+
   // --- Theme ---
   let theme = $state<ThemeMode>(loadTheme());
   $effect(() => {
@@ -427,6 +503,7 @@
     { id: 'save', title: 'Save request', combo: 'Ctrl/Cmd+S', run: save },
     { id: 'open', title: 'Open workspace folder…', run: openWorkspace },
     { id: 'import', title: 'Import Postman file…', run: importFile },
+    { id: 'envs', title: 'Manage environments & secrets…', run: () => openEnvManager(false) },
     { id: 'newreq', title: 'New request', run: () => createRequest('') },
     { id: 'newfolder', title: 'New folder', run: () => createFolder('') },
     { id: 'newtab', title: 'New tab', combo: 'Ctrl/Cmd+T', run: addTab },
@@ -480,6 +557,21 @@
     <button class="icon" onclick={() => (sidebarCollapsed = !sidebarCollapsed)} title="Toggle sidebar">☰</button>
     <span class="wordmark">wireforge</span>
     <span class="spacer"></span>
+    {#if workspaceRoot}
+      <select
+        class="env-switch"
+        value={activeEnv ?? ''}
+        onchange={(e) => setActiveEnv(e.currentTarget.value || null)}
+        title="Active environment"
+        aria-label="Active environment"
+      >
+        <option value="">No environment</option>
+        {#each environments as env (env.slug)}
+          <option value={env.slug}>{env.name}</option>
+        {/each}
+      </select>
+      <button class="icon" onclick={() => openEnvManager(false)} title="Manage environments & secrets">Env…</button>
+    {/if}
     <button class="icon" onclick={() => (paletteOpen = true)} title="Command palette (Ctrl/Cmd+K)">⌘K</button>
     <button
       class="icon"
@@ -548,7 +640,12 @@
 
     <div class="main" bind:this={mainEl} style="flex-direction: {orientation}">
       <section class="pane editor" style="flex: {splitRatio}">
-        <RequestEditor bind:request={tabs[activeIndex].request} sending={active.sending} onsend={send} />
+        <RequestEditor
+          bind:request={tabs[activeIndex].request}
+          sending={active.sending}
+          onsend={send}
+          preview={previewInput}
+        />
       </section>
       <div
         class="resizer {orientation === 'row' ? 'vertical' : 'horizontal'}"
@@ -573,6 +670,16 @@
   busy={importBusy}
   onconfirm={confirmImport}
 />
+
+{#if workspaceRoot}
+  <EnvManager
+    bind:open={envManagerOpen}
+    root={workspaceRoot}
+    {environments}
+    focusSecrets={envManagerFocusSecrets}
+    onchanged={refreshEnvironments}
+  />
+{/if}
 
 <style>
   .shell {
@@ -604,13 +711,17 @@
     cursor: pointer;
     font-size: 12px;
   }
-  .topbar .theme {
+  .topbar .theme,
+  .topbar .env-switch {
     background: var(--surface-code);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 4px 6px;
     font-size: 12px;
+  }
+  .topbar .env-switch {
+    max-width: 160px;
   }
   .tabbar {
     display: flex;

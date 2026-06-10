@@ -73,6 +73,45 @@ export interface WfError {
   message: string;
   severity: string;
   retryable: boolean;
+  suggestedAction?: { kind: string; text: string };
+  details?: { names?: string[] } & Record<string, unknown>;
+}
+
+// Variables & secrets (mirror the Rust environments / secret_resolver modules).
+export type EnvValue = string | { secret: boolean };
+
+export interface Environment {
+  format: string;
+  version: number;
+  id: string;
+  name: string;
+  values: Record<string, EnvValue>;
+}
+
+export interface EnvSummary {
+  slug: string;
+  name: string;
+  id: string;
+  hasLocal: boolean;
+}
+
+export type SecretScope = 'workspace' | 'environment';
+
+export interface SecretStatus {
+  name: string;
+  environment: string;
+  required: boolean;
+  set: boolean;
+  scope: SecretScope;
+  description?: string;
+  docUrl?: string;
+}
+
+export interface ResolveOutcome {
+  text: string;
+  used: string[];
+  unresolved: string[];
+  secrets: string[];
 }
 
 // Postman import (mirrors the Rust postman module).

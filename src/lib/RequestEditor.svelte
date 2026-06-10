@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { UnifiedRequest } from './types';
+  import type { UnifiedRequest, ResolveOutcome } from './types';
   import KeyValueEditor from './KeyValueEditor.svelte';
   import AuthEditor from './AuthEditor.svelte';
 
@@ -7,7 +7,29 @@
     request = $bindable(),
     sending,
     onsend,
-  }: { request: UnifiedRequest; sending: boolean; onsend: () => void } = $props();
+    preview,
+  }: {
+    request: UnifiedRequest;
+    sending: boolean;
+    onsend: () => void;
+    preview?: (input: string) => Promise<ResolveOutcome | null>;
+  } = $props();
+
+  // Debounced {{variable}} resolution preview for the URL.
+  let urlPreview = $state<ResolveOutcome | null>(null);
+  $effect(() => {
+    const url = request.url;
+    if (!preview || !url.includes('{{')) {
+      urlPreview = null;
+      return;
+    }
+    const handle = setTimeout(() => {
+      preview(url)
+        .then((r) => (urlPreview = r))
+        .catch(() => (urlPreview = null));
+    }, 250);
+    return () => clearTimeout(handle);
+  });
 
   const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
@@ -65,6 +87,16 @@
       {sending ? 'Sending…' : 'Send'}
     </button>
   </div>
+
+  {#if urlPreview}
+    <div class="preview mono" class:bad={urlPreview.unresolved.length > 0}>
+      <span class="pv-label">→</span>
+      <span class="pv-text">{urlPreview.text}</span>
+      {#if urlPreview.unresolved.length}
+        <span class="pv-warn">unresolved: {urlPreview.unresolved.join(', ')}</span>
+      {/if}
+    </div>
+  {/if}
 
   <div class="tabs">
     <button class:active={tab === 'params'} onclick={() => (tab = 'params')}>
@@ -187,5 +219,30 @@
     color: var(--text-muted);
     font-size: 12px;
     padding: 8px 2px;
+  }
+  .preview {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 2px 2px 0;
+    overflow: hidden;
+  }
+  .preview .pv-label {
+    color: var(--accent);
+    flex: 0 0 auto;
+  }
+  .preview .pv-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .preview.bad .pv-text {
+    color: var(--text);
+  }
+  .preview .pv-warn {
+    color: var(--danger);
+    flex: 0 0 auto;
   }
 </style>
